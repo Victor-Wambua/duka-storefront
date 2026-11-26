@@ -1,0 +1,99 @@
+/* Design tokens. Light first, dark via prefers-color-scheme. */
+:root {
+  color-scheme: light dark;
+
+  /* brand */
+  --green-900: #0b3328;
+  --green-700: #0f4c3a;
+  --green-600: #17694f;
+  --green-100: #dcefe6;
+  --sun-500: #f2b01e;
+  --sun-300: #f8d778;
+  --chilli-600: #b93a12;
+  --chilli-700: #9a2f0d;
+
+  /* semantic (light) */
+  --bg: #fbf5e9;
+  --surface: #ffffff;
+  --surface-2: #f4ecda;
+  --surface-3: #ebe0c8;
+  --text: #1c2822;
+  --text-muted: #556259;
+  --border: #d9ccb0;
+  --border-strong: #8d8466;
+  --brand: var(--green-700);
+  --brand-contrast: #ffffff;
+  --on-brand-muted: #cfe5da;
+  --link: #0f5a44;
+  --cta: var(--chilli-600);
+  --cta-hover: var(--chilli-700);
+  --cta-contrast: #ffffff;
+  --focus: #0b5fd1;
+  --ok: #17694f;
+  --ok-bg: #e0f1e8;
+  --warn: #8a5a00;
+  --warn-bg: #fdf0cf;
+  --danger: #a32117;
+  --danger-bg: #fbe4e0;
+  --info-bg: #e3edf9;
+  --info: #1d4f91;
+  --shadow-1: 0 1px 2px rgb(28 40 34 / 0.08), 0 1px 3px rgb(28 40 34 / 0.06);
+  --shadow-2: 0 8px 24px rgb(28 40 34 / 0.14);
+  --scrim: rgb(11 25 20 / 0.55);
+
+  /* type */
+  --font-body: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Palatino, 'Book Antiqua', Georgia, serif;
+  --fs-xs: 0.8125rem;
+  --fs-sm: 0.9375rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: 2.25rem;
+
+  /* space (4px base) */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+
+  --r-1: 8px;
+  --r-2: 14px;
+  --r-3: 22px;
+  --tap: 2.75rem;
+  --maxw: 72rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0e1814;
+    --surface: #16241e;
+    --surface-2: #1d2f27;
+    --surface-3: #274035;
+    --text: #f0eadb;
+    --text-muted: #b2beb5;
+    --border: #2f4a3e;
+    --border-strong: #6c8a7b;
+    --brand: #0a2a21;
+    --brand-contrast: #f4efe0;
+    --on-brand-muted: #b9d3c6;
+    --link: #7fd3ae;
+    --focus: #7db4ff;
+    --ok: #7fd3ae;
+    --ok-bg: #12382b;
+    --warn: #f3c969;
+    --warn-bg: #3a2e0c;
+    --danger: #ff9f93;
+    --danger-bg: #43201b;
+    --info: #9cc3f5;
+    --info-bg: #17304f;
+    --shadow-1: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-2: 0 8px 28px rgb(0 0 0 / 0.55);
+    --scrim: rgb(0 0 0 / 0.65);
+  }
+}

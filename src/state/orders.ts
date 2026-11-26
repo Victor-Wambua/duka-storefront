@@ -46,8 +46,14 @@ export function normaliseRef(input: string): string {
 // ---- pure helpers over the list ----
 
 export function upsertPending(orders: Order[], order: Order): Order[] {
-  // Idempotent: an order ref is only ever created once.
-  return orders.some((o) => o.ref === order.ref) ? orders : [order, ...orders];
+  // Idempotent: an order ref is only ever created once. If it already exists and is
+  // still unpaid, a retry may change who is paying (phone number) and where to deliver.
+  const existing = orders.find((o) => o.ref === order.ref);
+  if (!existing) return [order, ...orders];
+  if (existing.status !== 'pending_payment') return orders;
+  return orders.map((o) =>
+    o.ref === order.ref ? { ...o, customer: order.customer, delivery: order.delivery } : o,
+  );
 }
 
 const update = (orders: Order[], ref: string, fn: (o: Order) => Order) =>

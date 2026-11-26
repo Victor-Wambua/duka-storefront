@@ -70,10 +70,9 @@ export interface Store<T> {
 
 export function createStore<T>(spec: StoreSpec<T>): Store<T> {
   const read = (): T => {
-    const ls = storage();
-    let raw: string | null = null;
+    let raw: string | null;
     try {
-      raw = ls ? ls.getItem(spec.key) : null;
+      raw = storage()?.getItem(spec.key) ?? null;
     } catch {
       raw = null;
     }

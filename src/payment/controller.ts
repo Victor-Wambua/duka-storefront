@@ -7,7 +7,7 @@ export const DEFAULT_BACKOFF_MS = [2_000, 3_000, 4_500, 6_000, 8_000];
 
 export interface ControllerOptions {
   service: PaymentService;
-  windowMs?: number;
+  windowMs?: number | (() => number);
   backoffMs?: number[];
   now?: () => number;
   /** called when a request id is issued, so the caller can persist it for reload recovery */
@@ -36,7 +36,7 @@ export class PaymentController {
   private online = true;
   private disposed = false;
   private readonly service: PaymentService;
-  private readonly windowMs: number;
+  private readonly windowFn: () => number;
   private readonly backoff: number[];
   private readonly now: () => number;
   private readonly opts: ControllerOptions;
@@ -44,7 +44,8 @@ export class PaymentController {
   constructor(opts: ControllerOptions) {
     this.opts = opts;
     this.service = opts.service;
-    this.windowMs = opts.windowMs ?? DEFAULT_WINDOW_MS;
+    const w = opts.windowMs ?? DEFAULT_WINDOW_MS;
+    this.windowFn = typeof w === 'function' ? w : () => w;
     this.backoff = opts.backoffMs ?? DEFAULT_BACKOFF_MS;
     this.now = opts.now ?? Date.now;
   }
@@ -99,7 +100,7 @@ export class PaymentController {
           type: 'accepted',
           checkoutRequestId: res.checkoutRequestId,
           now: this.now(),
-          windowMs: this.windowMs,
+          windowMs: this.windowFn(),
           reused: res.reused,
         });
         this.opts.onAttempt?.({ attempt: p.attempt, checkoutRequestId: res.checkoutRequestId });
@@ -124,7 +125,7 @@ export class PaymentController {
       checkoutRequestId: p.checkoutRequestId,
       startedAt: p.startedAt,
       now: this.now(),
-      windowMs: this.windowMs,
+      windowMs: this.windowFn(),
     });
     if (this.state.status === 'awaiting_customer') this.startWaiting(0);
   }

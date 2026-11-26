@@ -12,5 +12,5 @@ export function formatKES(n: number): string {
   assertShillings(n);
   const sign = n < 0 ? '-' : '';
   const digits = Math.abs(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `${sign}KES ${digits}`;
+  return `${sign}KES\u00a0${digits}`;
 }

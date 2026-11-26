@@ -577,7 +577,7 @@ td.num, th.num { text-align: right; }
 /* ---------- phone simulator (demo overlay) ---------- */
 .sim-toggle {
   position: fixed;
-  left: var(--s-3);
+  right: var(--s-3);
   bottom: var(--s-3);
   z-index: 50;
   min-height: 2.5rem;
@@ -594,7 +594,7 @@ td.num, th.num { text-align: right; }
 }
 .sim {
   position: fixed;
-  left: var(--s-3);
+  right: var(--s-3);
   bottom: calc(var(--s-3) + 2.5rem + var(--s-2));
   z-index: 50;
   width: min(calc(100vw - 2 * var(--s-3)), 22rem);

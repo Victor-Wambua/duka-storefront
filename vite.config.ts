@@ -24,7 +24,6 @@ function serviceWorker(): Plugin {
 export default defineConfig({
   base: process.env.BASE_PATH ?? '/duka-storefront/',
   plugins: [react(), serviceWorker()],
-  server: { port: 4211, strictPort: true },
   build: { target: 'es2022', sourcemap: false },
   test: {
     environment: 'jsdom',

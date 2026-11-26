@@ -1,4 +1,4 @@
-/* Duka Storefront service worker. The build fills in __PRECACHE__ and __VERSION__. */
+/* Duka Storefront service worker. The build step injects the version and the precache list. */
 const VERSION = '__VERSION__';
 const CACHE = `duka-${VERSION}`;
 const PRECACHE = __PRECACHE__;
@@ -52,7 +52,7 @@ self.addEventListener('fetch', (event) => {
 
   // Everything else: cache first (assets are content-hashed), network as a fallback.
   event.respondWith(
-    caches.match(req).then(
+    caches.match(req, { ignoreVary: true }).then(
       (hit) =>
         hit ||
         fetch(req).then((res) => {

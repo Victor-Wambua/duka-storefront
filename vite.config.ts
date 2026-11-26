@@ -14,8 +14,8 @@ function serviceWorker(): Plugin {
       const urls = ['./', ...files, 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon.svg'];
       const version = createHash('sha256').update(files.join('|')).digest('hex').slice(0, 10);
       const src = readFileSync(new URL('./sw/sw.js', import.meta.url), 'utf8')
-        .replace('__PRECACHE__', JSON.stringify(urls))
-        .replace('__VERSION__', version);
+        .replaceAll('__PRECACHE__', JSON.stringify(urls))
+        .replaceAll('__VERSION__', version);
       this.emitFile({ type: 'asset', fileName: 'sw.js', source: src });
     },
   };

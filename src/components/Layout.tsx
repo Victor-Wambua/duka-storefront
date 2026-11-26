@@ -49,7 +49,7 @@ export function Layout() {
       )}
       <header className="site-header">
         <div className="container site-header__row">
-          <Link to="/" className="brand" aria-label="Mama Lucy's Provisions and Homeware, home">
+          <Link to="/" className="brand">
             <Logo />
             <span className="brand__name">
               Mama Lucy&rsquo;s

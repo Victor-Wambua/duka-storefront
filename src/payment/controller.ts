@@ -47,7 +47,7 @@ export class PaymentController {
     const w = opts.windowMs ?? DEFAULT_WINDOW_MS;
     this.windowFn = typeof w === 'function' ? w : () => w;
     this.backoff = opts.backoffMs ?? DEFAULT_BACKOFF_MS;
-    this.now = opts.now ?? Date.now;
+    this.now = opts.now ?? (() => Date.now());
   }
 
   getState = (): PaymentState => this.state;

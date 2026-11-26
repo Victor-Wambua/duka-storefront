@@ -139,7 +139,7 @@ export interface MockMpesa extends PaymentService {
 }
 
 export function createMockMpesa(opts: { now?: () => number; serverKey?: string; simKey?: string } = {}): MockMpesa {
-  const now = opts.now ?? Date.now;
+  const now = opts.now ?? (() => Date.now());
   const server = createStore<MockServerState>(SERVER_SPEC(opts.serverKey ?? 'duka.mock.server'));
   const sim = createStore<SimSettings>(SIM_SPEC(opts.simKey ?? 'duka.mock.sim'));
 

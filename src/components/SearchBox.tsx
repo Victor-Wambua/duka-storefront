@@ -10,12 +10,18 @@ export function SearchBox() {
 
   function setQuery(value: string) {
     if (pathname === '/') {
-      const next = new URLSearchParams(params);
-      if (value) next.set('q', value);
-      else next.delete('q');
-      setParams(next, { replace: true });
+      // flushSync keeps the controlled input in step with every keystroke
+      setParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (value) next.set('q', value);
+          else next.delete('q');
+          return next;
+        },
+        { replace: true, flushSync: true },
+      );
     } else {
-      navigate(value ? `/?q=${encodeURIComponent(value)}` : '/');
+      navigate(value ? `/?q=${encodeURIComponent(value)}` : '/', { flushSync: true });
     }
   }
 

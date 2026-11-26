@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
+import { resetPageFocusTracking } from '../src/components/PageTitle';
 
 // jsdom has no <dialog> behaviour; give it the parts the app relies on.
 if (typeof HTMLDialogElement !== 'undefined') {
@@ -16,6 +17,7 @@ if (typeof HTMLDialogElement !== 'undefined') {
 
 beforeEach(() => {
   localStorage.clear();
+  resetPageFocusTracking();
   window.scrollTo = vi.fn() as typeof window.scrollTo;
 });
 

@@ -40,18 +40,25 @@ async function payWith(user: User, outcome: SimOutcome, extra: Partial<Parameter
 }
 
 describe('checkout form', () => {
-  it('explains problems in an error summary and moves focus to it', async () => {
+  it('explains problems next to each field and moves focus to the first invalid one', async () => {
     const user = fakeUser();
     await openCheckout();
     await user.click(payButton());
     const summary = screen.getByTestId('error-summary');
-    expect(summary).toHaveAttribute('role', 'alert');
     expect(within(summary).getAllByRole('link')).toHaveLength(3);
     await act(async () => void (await vi.advanceTimersByTimeAsync(50)));
-    expect(summary).toHaveFocus();
-    expect(screen.getByLabelText('Full name')).toHaveAttribute('aria-invalid', 'true');
-    await user.click(within(summary).getByRole('link', { name: /name/ }));
-    expect(screen.getByLabelText('Full name')).toHaveFocus();
+    const name = screen.getByLabelText('Full name');
+    expect(name).toHaveFocus();
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(name).toHaveAccessibleDescription(/Enter your name/);
+    expect(screen.getByLabelText('Address or landmark')).toHaveAttribute('aria-invalid', 'true');
+    await user.click(within(summary).getByRole('link', { name: /street, estate or landmark/ }));
+    expect(screen.getByLabelText('Address or landmark')).toHaveFocus();
+  });
+
+  it('does not show a realistic sample number as a placeholder', async () => {
+    await openCheckout();
+    expect(screen.getByLabelText('M-Pesa phone number')).not.toHaveAttribute('placeholder');
   });
 
   it('normalises the phone number live', async () => {

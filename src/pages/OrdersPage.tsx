@@ -15,20 +15,28 @@ export default function OrdersPage() {
   const id = useId();
   const [ref, setRef] = useState('');
   const [phone, setPhone] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [errs, setErrs] = useState<{ ref?: string; phone?: string; form?: string }>({});
   const [busy, setBusy] = useState(false);
 
   async function lookup(e: FormEvent) {
     e.preventDefault();
-    setError(null);
     const r = normaliseRef(ref);
     const p = normalisePhone(phone);
-    if (!/^DUKA-[A-Z0-9]{6}$/.test(r)) return setError('Enter the order reference exactly as shown on your receipt, like DUKA-7K3Q9X.');
-    if (!p.ok) return setError(phoneMessage(p.reason));
-    const found = orders.find((o) => o.ref === r && o.customer.msisdn === p.msisdn);
-    if (!found) {
-      return setError('No order on this device matches that reference and phone number. Orders are stored in this browser only.');
+    const next: { ref?: string; phone?: string; form?: string } = {};
+    if (!/^DUKA-[A-Z0-9]{6}$/.test(r)) next.ref = 'Enter the order reference exactly as shown on your receipt, like DUKA-7K3Q9X.';
+    if (!p.ok) next.phone = phoneMessage(p.reason);
+    if (next.ref || next.phone) {
+      setErrs(next);
+      // Focus the first field that needs fixing; its message sits right under it.
+      requestAnimationFrame(() => document.getElementById(next.ref ? `${id}-ref` : `${id}-phone`)?.focus());
+      return;
     }
+    const found = orders.find((o) => o.ref === r && p.ok && o.customer.msisdn === p.msisdn);
+    if (!found) {
+      setErrs({ form: 'No order on this device matches that reference and phone number. Orders are stored in this browser only.' });
+      return;
+    }
+    setErrs({});
     if (found.status === 'pending_payment') {
       setBusy(true);
       try {
@@ -55,17 +63,23 @@ export default function OrdersPage() {
             <label className="field__label" htmlFor={`${id}-ref`}>
               Order reference
             </label>
-            <input id={`${id}-ref`} type="text" autoCapitalize="characters" autoComplete="off" placeholder="DUKA-7K3Q9X" value={ref} onChange={(e) => setRef(e.target.value)} />
+            <input id={`${id}-ref`} type="text" autoCapitalize="characters" autoComplete="off" aria-describedby={`${id}-ref-msg`} aria-invalid={errs.ref ? true : undefined} value={ref} onChange={(e) => setRef(e.target.value)} />
+            <span id={`${id}-ref-msg`} className={errs.ref ? 'field__error' : 'field__hint'}>
+              {errs.ref ?? 'The reference starts with DUKA- and is followed by six letters or digits.'}
+            </span>
           </div>
           <div className="field">
             <label className="field__label" htmlFor={`${id}-phone`}>
               Phone number
             </label>
-            <input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel" placeholder="0712 345 678" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input id={`${id}-phone`} type="tel" inputMode="tel" autoComplete="tel" aria-describedby={`${id}-phone-msg`} aria-invalid={errs.phone ? true : undefined} value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <span id={`${id}-phone-msg`} className={errs.phone ? 'field__error' : 'field__hint'}>
+              {errs.phone ?? 'The number you ordered with, in any format such as 0712 345 678.'}
+            </span>
           </div>
-          {error && (
+          {errs.form && (
             <p className="field__error" role="alert">
-              {error}
+              {errs.form}
             </p>
           )}
           <button type="submit" className="btn btn--primary" disabled={busy}>

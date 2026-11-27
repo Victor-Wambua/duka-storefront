@@ -108,22 +108,36 @@ export function PromoField({ view }: { view: CartView }) {
   );
 }
 
-export function DeliveryPicker({ view, now = new Date() }: { view: CartView; now?: Date }) {
+export function DeliveryPicker({
+  view,
+  now = new Date(),
+  selectId,
+  error,
+}: {
+  view: CartView;
+  now?: Date;
+  /** Lets a form focus the select, and ties an error message to it. */
+  selectId?: string;
+  error?: string | undefined;
+}) {
   const { dispatch } = useCart();
-  const id = useId();
+  const autoId = useId();
+  const id = autoId;
+  const areaId = selectId ?? `${id}-area`;
   const area = view.area;
   const afterDiscount = view.pricing.subtotal - view.pricing.discount;
   const gap = amountToFreeDelivery(area, afterDiscount);
   return (
     <div className="field">
-      <label className="field__label" htmlFor={`${id}-area`}>
+      <label className="field__label" htmlFor={areaId}>
         Delivery or pickup area
       </label>
       <select
-        id={`${id}-area`}
+        id={areaId}
         value={area?.id ?? ''}
         onChange={(e) => dispatch({ type: 'setArea', areaId: e.target.value || null })}
-        aria-describedby={`${id}-est`}
+        aria-describedby={error ? `${id}-err ${id}-est` : `${id}-est`}
+        aria-invalid={error ? true : undefined}
       >
         <option value="">Choose your area</option>
         {DELIVERY_AREAS.map((a) => (
@@ -145,6 +159,11 @@ export function DeliveryPicker({ view, now = new Date() }: { view: CartView; now
         )}{' '}
         Sample fee table: fictional rates.
       </span>
+      {error && (
+        <span id={`${id}-err`} className="field__error">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

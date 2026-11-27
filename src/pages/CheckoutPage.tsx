@@ -62,7 +62,6 @@ export default function CheckoutPage() {
   const [form, setForm] = useState<CheckoutValues>(MIN_FORM);
   const [touched, setTouched] = useState<Partial<Record<keyof CheckoutValues, boolean>>>({});
   const [submitted, setSubmitted] = useState(false);
-  const summaryRef = useRef<HTMLDivElement>(null);
   const [restored, setRestored] = useState(false);
   const paidRef = useRef<string | null>(null);
 
@@ -158,7 +157,10 @@ export default function CheckoutPage() {
     if (busy || !online) return;
     setSubmitted(true);
     if (Object.keys(errors).length > 0 || !phone.ok || !area || view.lines.length === 0) {
-      requestAnimationFrame(() => summaryRef.current?.focus());
+      // Put focus on the first field that needs fixing; its message sits right under it.
+      const order: (keyof CheckoutErrors)[] = ['name', 'phone', 'area', 'address'];
+      const target = order.find((k) => errors[k]) ?? 'phone';
+      requestAnimationFrame(() => document.getElementById(fieldId(target))?.focus());
       return;
     }
     if (form.method === 'mpesa') {
@@ -241,7 +243,7 @@ export default function CheckoutPage() {
 
           <form onSubmit={onSubmit} noValidate hidden={!showForm} aria-label="Checkout details">
             {submitted && errorEntries.length > 0 && (
-              <div className="error-summary" role="alert" tabIndex={-1} ref={summaryRef} data-testid="error-summary">
+              <div className="error-summary" data-testid="error-summary">
                 <h2>Please fix {errorEntries.length === 1 ? 'this' : `these ${errorEntries.length}`} to continue</h2>
                 <ul>
                   {errorEntries.map(([k, msg]) => (
@@ -292,7 +294,6 @@ export default function CheckoutPage() {
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
-                  placeholder="0712 345 678"
                   value={form.phone}
                   onChange={(e) => set('phone', e.target.value)}
                   onBlur={() => blur('phone')}
@@ -302,15 +303,14 @@ export default function CheckoutPage() {
                 <span id={`${fieldId('phone')}-msg`} aria-live="polite" className={phone.ok ? 'field__ok' : showErr('phone') ? 'field__error' : 'field__hint'}>
                   {phone.ok
                     ? `The prompt will go to ${phone.display} (+${phone.msisdn}).`
-                    : (showErr('phone') ?? 'Any format works: 0712 345 678, 0112 345 678 or +254 712 345 678.')}
+                    : (showErr('phone') ?? 'Use the number that has M-Pesa. Any format works: 0712 345 678, 0112 345 678 or +254 712 345 678.')}
                 </span>
               </div>
             </section>
 
             <section className="panel" aria-labelledby={`${uid}-ship`}>
               <h2 id={`${uid}-ship`}>Delivery details</h2>
-              <DeliveryPicker view={view} />
-              {showErr('area') && <p className="field__error">{showErr('area')}</p>}
+              <DeliveryPicker view={view} selectId={fieldId('area')} error={showErr('area')} />
               {area?.kind === 'delivery' && (
                 <div className="field">
                   <label className="field__label" htmlFor={fieldId('address')}>

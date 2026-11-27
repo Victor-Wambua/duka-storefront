@@ -51,6 +51,11 @@ export function CartDrawer() {
               Close<span className="sr-only"> cart</span>
             </button>
           </div>
+          <p className="sr-only" role="status">
+            {empty
+              ? 'Your cart is empty.'
+              : `${view.count} ${view.count === 1 ? 'item' : 'items'} in your cart. Total ${formatKES(view.pricing.total)}.`}
+          </p>
           <div className="drawer__body">
             {empty ? (
               <div className="empty">

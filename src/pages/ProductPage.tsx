@@ -130,14 +130,16 @@ function ProductView({ product }: { product: Product }) {
               {stock === 0 ? 'Sold out' : room === 0 ? 'All in your cart' : `Add to cart · ${formatKES(variant.price * shownQty)}`}
             </button>
           </div>
-          {justAdded === variant.id && note && (
-            <p role="status" className="notice notice--ok" style={{ marginBottom: '0.75rem' }}>
-              {note}{' '}
-              <button type="button" className="link-btn" onClick={openCart}>
-                View cart ({view.count})
-              </button>
-            </p>
-          )}
+          <div role="status" className={justAdded === variant.id && note ? 'notice notice--ok' : undefined} style={{ marginBottom: '0.75rem' }}>
+            {justAdded === variant.id && note && (
+              <>
+                {note}{' '}
+                <button type="button" className="link-btn" onClick={openCart}>
+                  View cart ({view.count})
+                </button>
+              </>
+            )}
+          </div>
 
           <h2 style={{ fontSize: 'var(--fs-lg)', marginTop: 'var(--s-5)' }}>About this item</h2>
           <p>{product.description}</p>

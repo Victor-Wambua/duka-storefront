@@ -63,13 +63,9 @@ export default function ShopPage() {
           <p className="hero__kicker">Karibu, welcome</p>
           <PageTitle title="Shop">Everything for the kitchen and the home, paid for with M-Pesa.</PageTitle>
           <p>Order here, approve the prompt on your phone, and we deliver across Nairobi or keep it ready for pickup.</p>
-          <div className="hero__chips">
-            <span className="hero__chip">
-              Try code <code>KARIBU10</code>
-            </span>
-            <span className="hero__chip">Free delivery over KES 5,000</span>
-            <span className="hero__chip">Pay on delivery too</span>
-          </div>
+          <p className="hero__terms">
+            Try code <code>KARIBU10</code>. Free delivery over KES 5,000. You can also pay on delivery.
+          </p>
         </section>
       )}
 
@@ -88,15 +84,15 @@ export default function ShopPage() {
         <h2 id="catalogue-h" className={filtered ? 'sr-only' : ''}>
           All products
         </h2>
-        <ul className="chips" aria-label="Filter by category">
+        <ul className="tabs" aria-label="Filter by category">
           <li>
-            <button type="button" className="chip" aria-pressed={cat === null} onClick={() => update({ cat: null })}>
+            <button type="button" className="tab" aria-pressed={cat === null} onClick={() => update({ cat: null })}>
               All
             </button>
           </li>
           {CATEGORIES.map((c) => (
             <li key={c.id}>
-              <button type="button" className="chip" aria-pressed={cat === c.id} onClick={() => update({ cat: c.id })}>
+              <button type="button" className="tab" aria-pressed={cat === c.id} onClick={() => update({ cat: c.id })}>
                 {c.name}
               </button>
             </li>

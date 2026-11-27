@@ -24,6 +24,12 @@ export function shade(hex: string, amount: number): string {
   return `#${((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1)}`;
 }
 
+/** Rough relative luminance (0 dark, 1 light) of a #rrggbb colour. */
+function lightness(hex: string): number {
+  const n = parseInt(hex.replace('#', ''), 16);
+  return (0.2126 * ((n >> 16) & 255) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255)) / 255;
+}
+
 interface P {
   c1: string;
   c2: string;
@@ -38,20 +44,21 @@ interface P {
 
 function LabelPanel({ x, y, w, h, p, size = 17 }: { x: number; y: number; w: number; h: number; p: P; size?: number }): ReactNode {
   if (!p.label) return null;
-  // shrink long words so they always sit inside the panel (bold caps are about 0.7em wide)
-  const fit = Math.min(size, Math.floor(((w - 10) / (p.label.length * 0.72)) * 10) / 10);
+  // Shrink long words to sit inside the panel, but never below 12 units: the lettering is
+  // part of the picture, and anything smaller would not be legible at any size.
+  // Lettering on the cream label must stay readable even when the palette colour is pale.
+  const ink = lightness(p.c2) > 0.5 ? shade(p.c3, -0.35) : lightness(p.c2) > 0.38 ? shade(p.c2, -0.3) : p.c2;
+  const room = w - 10;
+  const fit = Math.max(12, Math.min(size, Math.floor((room / (p.label.length * 0.72)) * 10) / 10));
+  // If a long word still does not fit at 12 units, squeeze the letters rather than shrink them.
+  const squeeze = p.label.length * 0.72 * fit > room;
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} rx={5} fill="#fffdf6" opacity={0.96} />
+      <rect x={x} y={y} width={w} height={h} rx={3} fill="#fffdf6" opacity={0.96} />
       <rect x={x} y={y + h - 6} width={w} height={6} rx={0} fill={p.c3} />
-      <text x={x + w / 2} y={y + h / 2 - (p.sublabel ? 1 : -4)} textAnchor="middle" fontSize={fit} fontWeight={800} fill={p.c2} fontFamily="system-ui, sans-serif" letterSpacing={0.3}>
+      <text x={x + w / 2} y={y + h / 2 - 3 + fit * 0.35} textAnchor="middle" fontSize={fit} fontWeight={800} fill={ink} fontFamily="system-ui, sans-serif" {...(squeeze ? { textLength: room, lengthAdjust: 'spacingAndGlyphs' as const } : {})}>
         {p.label}
       </text>
-      {p.sublabel && (
-        <text x={x + w / 2} y={y + h / 2 + 12} textAnchor="middle" fontSize={8.5} fontWeight={600} fill="#4b4b4b" fontFamily="system-ui, sans-serif">
-          {p.sublabel}
-        </text>
-      )}
     </g>
   );
 }

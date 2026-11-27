@@ -16,9 +16,9 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <li>
       <article className="card">
-        {product.badge && <span className="badge">{product.badge}</span>}
         <ProductArt art={product.art} tint={first?.tint} />
         <div className="card__body">
+          {product.badge && <p className="card__tag">{product.badge}</p>}
           <h3 className="card__name">
             <Link className="card__link" to={`/product/${product.slug}`}>
               {product.name}

@@ -1,6 +1,6 @@
-import { act, screen, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { expectNoA11yViolations, renderApp, resetWorld, seedCart } from './helpers';
 import { cartStore } from '../src/state/stores';
 
@@ -186,5 +186,42 @@ describe('cart drawer', () => {
     await user.click(screen.getByRole('button', { name: /Cart,/ }));
     await act(async () => undefined);
     await expectNoA11yViolations(container);
+  });
+});
+
+describe('phone simulator', () => {
+  beforeAll(() => {
+    // jsdom has no <dialog>.show(); the real browsers do.
+    HTMLDialogElement.prototype.show ??= function show(this: HTMLDialogElement) {
+      this.setAttribute('open', '');
+    };
+  });
+
+  it('opens as a labelled dialog, takes focus, and Escape closes it and returns focus', async () => {
+    const user = userEvent.setup();
+    renderApp('/');
+    const toggle = screen.getByRole('button', { name: 'Phone simulator' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await user.click(toggle);
+    const dialog = await screen.findByRole('dialog', { name: /Phone simulator/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await waitFor(() => expect(within(dialog).getByRole('heading', { name: 'Phone simulator' })).toHaveFocus());
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: /Phone simulator/ })).not.toBeInTheDocument();
+    expect(toggle).toHaveFocus();
+  });
+});
+
+describe('hero and filters', () => {
+  it('shows the offers as one plain line, not chips', () => {
+    renderApp('/');
+    expect(screen.getByText(/Free delivery over KES 5,000/).closest('p')).toHaveTextContent(/KARIBU10/);
+  });
+
+  it('marks the current category for assistive tech', async () => {
+    const user = userEvent.setup();
+    renderApp('/');
+    await user.click(screen.getByRole('button', { name: 'Pantry' }));
+    expect(screen.getByRole('button', { name: 'Pantry' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

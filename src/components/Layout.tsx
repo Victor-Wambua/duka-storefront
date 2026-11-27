@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useOnline } from '../hooks/useOnline';
 import { useCart } from '../state/CartContext';
@@ -14,17 +14,18 @@ export function Layout() {
   const { view, openCart } = useCart();
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const [showSim, setShowSim] = useState(false);
+  const [simOpen, setSimOpen] = useState(false);
+  const simToggle = useRef<HTMLButtonElement>(null);
+  const simId = useId();
+
+  const closeSim = useCallback(() => {
+    setSimOpen(false);
+    simToggle.current?.focus();
+  }, []);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [pathname]);
-
-  // Load the demo overlay after the shop is interactive; it is not part of the shopping path.
-  useEffect(() => {
-    const id = window.setTimeout(() => setShowSim(true), 300);
-    return () => window.clearTimeout(id);
-  }, []);
 
   return (
     <>
@@ -40,7 +41,20 @@ export function Layout() {
         Skip to main content
       </a>
       <div className="demo-banner no-print">
-        <strong>Demo shop.</strong> Products, stock and payments are simulated. No money moves.
+        <p>
+          <strong>Demo shop.</strong> Products, stock and payments are simulated. No money moves.
+        </p>
+        <button
+          ref={simToggle}
+          type="button"
+          className="sim-toggle"
+          aria-expanded={simOpen}
+          aria-controls={`${simId}-panel`}
+          aria-haspopup="dialog"
+          onClick={() => setSimOpen((v) => !v)}
+        >
+          Phone simulator
+        </button>
       </div>
       {!online && (
         <div className="offline-banner no-print" role="status">
@@ -92,7 +106,7 @@ export function Layout() {
           </section>
           <section aria-labelledby="f-help">
             <h2 id="f-help">Shop</h2>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: '0.5rem' }}>
+            <ul className="footer-list">
               <li>
                 <Link to="/">All products</Link>
               </li>
@@ -108,15 +122,18 @@ export function Layout() {
             <h2 id="f-code">Open source</h2>
             <p>
               <a href="https://github.com/Victor-Wambua/duka-storefront">Source on GitHub</a>. Built by Victor Wambua.
-              Use the yellow &ldquo;Phone simulator&rdquo; button to pick how each payment ends.
+              Use the &ldquo;Phone simulator&rdquo; button in the yellow bar at the top to pick how each payment ends.
             </p>
           </section>
         </div>
       </footer>
       <CartDrawer />
-      {showSim && (
+      {simOpen && (
         <Suspense fallback={null}>
-          <PhoneSimulator />
+          <PhoneSimulator
+            id={`${simId}-panel`}
+            onClose={closeSim}
+          />
         </Suspense>
       )}
     </>

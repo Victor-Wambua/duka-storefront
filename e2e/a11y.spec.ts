@@ -43,9 +43,9 @@ for (const scheme of ['light', 'dark'] as const) {
 test('axe: the payment states (awaiting, expired) and the simulator', async ({ page }) => {
   await addMaizeFlourAndOpenCheckout(page);
   await fillCheckout(page);
-  const toggle = page.getByRole('button', { name: 'Phone simulator' });
+  const toggle = page.getByRole('button', { name: 'Phone simulator', exact: true });
   await toggle.click();
-  const sim = page.getByRole('complementary', { name: /Phone simulator/ });
+  const sim = page.getByRole('dialog', { name: /Phone simulator/ });
   await sim.getByLabel('What happens to the next payment').selectOption({ label: 'Never answers' });
   await sim.getByLabel('Shop stops waiting after').selectOption('15');
   await scan(page, 'simulator');

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { useNow } from '../hooks/useNow';
 import { formatKES } from '../lib/money';
 import { maskPhone } from '../lib/phone';
@@ -29,23 +29,45 @@ const DECISIONS: { id: Decision; label: string }[] = [
  * a simulated handset. This stands in for a real phone, which a reviewer
  * cannot hold, so every payment state can be seen.
  */
-export default function PhoneSimulator() {
-  const [open, setOpen] = useState(false);
+export default function PhoneSimulator({ id: panelId, onClose }: { id: string; onClose: () => void }) {
   const id = useId();
+  const ref = useRef<HTMLDialogElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  // Non-modal on purpose: you answer the simulated prompt while the checkout stays visible.
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.show();
+    headingRef.current?.focus();
+    // Escape closes the panel wherever focus is, unless the cart drawer is on top of it.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('dialog.drawer[open]')) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
   const sim = useStore(mockMpesa.sim);
   useStore(mockMpesa.server);
-  const now = useNow(open ? 500 : null);
-  const prompts = open ? mockMpesa.livePrompts() : [];
+  const now = useNow(500);
+  const prompts = mockMpesa.livePrompts();
   const current = OUTCOMES.find((o) => o.id === sim.outcome);
 
   return (
-    <>
-      <button type="button" className="sim-toggle no-print" aria-expanded={open} aria-controls={`${id}-panel`} onClick={() => setOpen((v) => !v)}>
-        Phone simulator
-      </button>
-      {open && (
-        <aside className="sim no-print" id={`${id}-panel`} aria-label="Phone simulator (demo controls)">
-          <h2>Phone simulator</h2>
+    <dialog
+      ref={ref}
+      className="sim no-print"
+      id={panelId}
+      aria-labelledby={`${id}-title`}
+    >
+      <div className="sim__head">
+        <h2 id={`${id}-title`} ref={headingRef} tabIndex={-1}>
+          Phone simulator
+        </h2>
+        <button type="button" className="btn btn--sm" onClick={onClose}>
+          Close<span className="sr-only"> phone simulator</span>
+        </button>
+      </div>
+      <>
           <p className="sim__note">
             Demo controls. Pick what the customer does when the next M-Pesa prompt arrives. Settings apply to the next
             request.
@@ -140,8 +162,7 @@ export default function PhoneSimulator() {
           >
             Reset demo data (cart, orders, stock)
           </button>
-        </aside>
-      )}
-    </>
+      </>
+    </dialog>
   );
 }

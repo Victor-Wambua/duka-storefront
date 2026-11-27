@@ -1,10 +1,10 @@
 import { expect, type Page } from '@playwright/test';
 
 export async function openSimulator(page: Page) {
-  const toggle = page.getByRole('button', { name: 'Phone simulator' });
+  const toggle = page.getByRole('button', { name: 'Phone simulator', exact: true });
   await toggle.waitFor();
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  return page.getByRole('complementary', { name: /Phone simulator/ });
+  return page.getByRole('dialog', { name: /Phone simulator/ });
 }
 
 export async function setOutcome(page: Page, label: string, delaySec = 1) {
@@ -12,7 +12,7 @@ export async function setOutcome(page: Page, label: string, delaySec = 1) {
   await sim.getByLabel('What happens to the next payment').selectOption({ label });
   if (label !== 'I will answer on the phone') await sim.getByLabel(/Customer answers after/).fill(String(delaySec));
   await sim.getByLabel('Shop stops waiting after').selectOption('15');
-  await page.getByRole('button', { name: 'Phone simulator' }).click(); // close
+  await page.getByRole('button', { name: 'Phone simulator', exact: true }).click(); // close
 }
 
 export async function addMaizeFlourAndOpenCheckout(page: Page) {

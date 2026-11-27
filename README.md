@@ -30,7 +30,7 @@ This project is a working answer to that: the payment is a state machine, every 
 - **No double charge, no duplicate order.** One order reference per cart, one idempotency key per attempt, double-click protection, and a rule that a new prompt is not offered until a status check shows nothing was paid.
 - **Recovery.** "Check payment status" looks the payment up by order reference and phone. A reload mid-payment resumes the same prompt.
 - **Pay on delivery** (or at pickup) as an alternative, receipts with print styles, order history, and order lookup by reference and phone.
-- **Phone simulator.** The yellow button in the corner opens demo controls: choose how the next payment ends, or play the customer on a simulated handset, so every state can be seen without a real phone.
+- **Phone simulator.** The button in the yellow bar at the top opens a dialog with demo controls (Escape closes it): choose how the next payment ends, or play the customer on a simulated handset, so every state can be seen without a real phone.
 - **PWA.** Installable, offline shell and catalogue, add-to-cart works offline, and checkout explains that it needs a connection.
 - **Accessibility.** Landmarks, skip link, focus moved on route change and into/out of the drawer, live regions for cart changes and payment status, keyboard operable, reduced motion, dark mode, axe checks with real colour contrast.
 
@@ -41,6 +41,15 @@ This project is a working answer to that: the payment is a state machine, every 
 | Wrong PIN | No answer, then recovery | Receipt |
 | --- | --- | --- |
 | <img src="docs/screenshots/05-stk-failed-wrong-pin.png" alt="M-Pesa did not accept the PIN, with Try again" width="220"> | <img src="docs/screenshots/06-stk-expired-recovery.png" alt="We have not heard back from M-Pesa, with Check payment status" width="220"> | <img src="docs/screenshots/07-receipt.png" alt="Printable receipt" width="320"> |
+
+## Design notes
+
+- Text is never smaller than 12px, including the lettering drawn on the product pictures. "Popular" and "New" are plain text above the product name, not badges.
+- The whole product card is one link; the name link alone is at least 44px tall. Header, footer and breadcrumb links are 44px tall too.
+- The category filter is a row of text tabs with the current one underlined and set in bold, and it is marked with `aria-pressed`.
+- The checkout summary stays in view beside the form from 960px up. Validation puts the message under each field and moves focus to the first one that needs fixing. No field shows a realistic sample phone number as a placeholder.
+- The phone simulator toggle sits in the demo bar, not over the page, so it cannot cover the Pay button or the footer links. The panel is a non-modal dialog with focus on open and on close.
+- Not verified: screen reader output (VoiceOver, NVDA, TalkBack). Axe and keyboard checks only.
 
 ## Quick start
 

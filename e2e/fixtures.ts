@@ -10,8 +10,8 @@ export const GATEWAY = 'https://mpesa-gateway.victorwambua004.workers.dev';
  * which takes priority over this.
  */
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page }, provide) => {
     await page.route(`${GATEWAY}/**`, (route) => route.abort('connectionrefused'));
-    await use(page);
+    await provide(page);
   },
 });

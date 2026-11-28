@@ -6,14 +6,22 @@ import {
   type LookupResult,
   type PaymentService,
   type PollSchedule,
+  type ProviderId,
   type ResultFailReason,
   type StatusResult,
 } from '../payment/types';
 import { createGatewayClient, GatewayError, type GatewayClient, type GatewayPayment } from './client';
 import { DEMO_CAP_KES } from './config';
+import { SANDBOX_BACKOFF_MS, SANDBOX_ID_PREFIX, SANDBOX_WINDOW_MS } from './sandbox';
 
-/** Gateway payment ids look like pay_<hex>. The simulator's request ids never start with this. */
+/** Mock-gateway payment ids look like pay_<hex>. The simulator's request ids never start with this. */
 export const isGatewayId = (id: string): boolean => id.startsWith('pay_');
+/** Sandbox payments are tagged by this app (sbx:pay_<hex>) so a reload or a later lookup goes back to the sandbox host. */
+export const isSandboxId = (id: string): boolean => id.startsWith(SANDBOX_ID_PREFIX);
+/** Which backend created the payment with this id. */
+export const providerOfId = (id: string): ProviderId => (isSandboxId(id) ? 'sandbox' : isGatewayId(id) ? 'gateway' : 'simulator');
+/** The gateway's own payment id, as shown in its inspector. */
+export const rawPaymentId = (id: string): string => (isSandboxId(id) ? id.slice(SANDBOX_ID_PREFIX.length) : id);
 
 /**
  * The gateway marks a prompt timed out after 90 s and cron settles it a little later. The wait
@@ -94,6 +102,8 @@ function fail(err: unknown): PaymentServiceError {
         return new PaymentServiceError('rate_limited', err.message, { retryAfterSec: err.retryAfterSec ?? 30 });
       case 'over_cap':
         return new PaymentServiceError('over_cap', err.message);
+      case 'phone_not_approved':
+        return new PaymentServiceError('phone_not_approved', err.message);
       case 'validation':
       case 'idempotency_conflict':
       case 'reference_pending':
@@ -111,12 +121,29 @@ export interface GatewayService extends PaymentService {
   client: GatewayClient;
 }
 
-export function createGatewayService(
-  opts: { client?: GatewayClient; now?: () => number; capKes?: number } = {},
-): GatewayService {
+export interface GatewayServiceOptions {
+  client?: GatewayClient;
+  now?: () => number;
+  capKes?: number;
+  /**
+   * Safaricom sandbox mode. Every payment is this flat amount instead of the order total (the sandbox
+   * key's cap is below the shop's carts), no `scenario` is ever sent (the real Daraja takes none), the
+   * ids this service hands out are tagged so they route back here, and the wait window and polling
+   * follow the sandbox's 150 s prompt timeout.
+   */
+  sandbox?: { chargeKes: number };
+}
+
+export function createGatewayService(opts: GatewayServiceOptions = {}): GatewayService {
   const client = opts.client ?? createGatewayClient();
   const now = opts.now ?? (() => Date.now());
+  const sandbox = opts.sandbox ?? null;
   const cap = opts.capKes ?? DEMO_CAP_KES;
+  const windowMs = sandbox ? SANDBOX_WINDOW_MS : GATEWAY_WINDOW_MS;
+  const backoffMs = sandbox ? SANDBOX_BACKOFF_MS : GATEWAY_BACKOFF_MS;
+  const tag = (id: string) => (sandbox ? `${SANDBOX_ID_PREFIX}${id}` : id);
+  const untag = (id: string) => (sandbox && isSandboxId(id) ? rawPaymentId(id) : id);
+  const owns = (id: string) => (sandbox ? isSandboxId(id) : isGatewayId(id));
   /** when we first saw each payment as timed_out (client clock), for the late-result watch */
   const timedOutSeen = new Map<string, number>();
 
@@ -125,11 +152,11 @@ export function createGatewayService(
     const window = replayed ? Math.max(0, ms(p.expires_at) - t) : ms(p.expires_at) - ms(p.created_at);
     return {
       kind: 'accepted',
-      checkoutRequestId: p.id,
+      checkoutRequestId: tag(p.id),
       expiresAt: t + window,
       reused: replayed,
       ...(p.checkout_request_id ? { darajaCheckoutId: p.checkout_request_id } : {}),
-      windowMs: GATEWAY_WINDOW_MS,
+      windowMs,
       promptEndsAt: t + window,
     };
   };
@@ -138,17 +165,18 @@ export function createGatewayService(
     client,
 
     async initiateStkPush(req: InitiateRequest): Promise<InitiateResult> {
-      if (req.amount > cap) {
+      const amount = sandbox ? sandbox.chargeKes : req.amount;
+      if (amount > cap) {
         throw new PaymentServiceError('over_cap', `The demo gateway key accepts payments up to KES ${cap.toLocaleString('en-KE')}.`);
       }
       try {
         const { payment, replayed } = await client.createPayment(
           {
-            amount: req.amount,
+            amount,
             phone: req.msisdn,
             reference: req.orderRef,
             ...(req.description ? { description: req.description } : {}),
-            ...(req.scenario ? { scenario: req.scenario } : {}),
+            ...(req.scenario && !sandbox ? { scenario: req.scenario } : {}),
           },
           req.idempotencyKey,
         );
@@ -170,14 +198,18 @@ export function createGatewayService(
       }
     },
 
-    async queryStatus(id: string): Promise<StatusResult> {
+    async queryStatus(taggedId: string): Promise<StatusResult> {
+      const id = untag(taggedId);
       let p: GatewayPayment;
       try {
         p = await client.getPayment(id);
       } catch (err) {
         throw fail(err);
       }
-      if (p.status === 'timed_out') {
+      // The sandbox's own timeout answer (Safaricom's 1037, which it sends by callback) is final. Only a
+      // timeout the gateway decided on its own, with no result from Safaricom, can still be overtaken by a late one.
+      const answered = sandbox && p.result_code !== undefined;
+      if (p.status === 'timed_out' && !answered) {
         const first = timedOutSeen.get(id) ?? now();
         timedOutSeen.set(id, first);
         if (now() - first < LATE_WATCH_MS) return { state: 'pending', phase: 'late_watch' };
@@ -190,14 +222,14 @@ export function createGatewayService(
 
     async lookupPayment(q: LookupQuery): Promise<LookupResult> {
       try {
-        return toLookupResult(await client.listByReference(q.orderRef), q.amount);
+        return toLookupResult(await client.listByReference(q.orderRef), sandbox ? sandbox.chargeKes : q.amount);
       } catch (err) {
         throw fail(err);
       }
     },
 
     pollSchedule(id: string): PollSchedule | undefined {
-      return isGatewayId(id) ? { backoffMs: GATEWAY_BACKOFF_MS, windowMs: GATEWAY_WINDOW_MS } : undefined;
+      return owns(id) ? { backoffMs, windowMs } : undefined;
     },
   };
 }

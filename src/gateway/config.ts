@@ -24,3 +24,17 @@ export const DEMO_CAP_KES = 1000;
 
 /** Give up on a single request after this long. */
 export const REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * The second deployed gateway instance, which talks to Safaricom's real Daraja sandbox (not a mock).
+ * Same API, same publishable demo key (public by design, like the one above), different base URL.
+ * Its per-payment cap is KES 100, so the shop sends a flat KES 1 test charge instead of the order total.
+ */
+export const SANDBOX_URL = (env.VITE_SANDBOX_URL || 'https://gateway-sbx.victorwambua004.workers.dev').replace(/\/+$/, '');
+
+export const SANDBOX_KEY = env.VITE_SANDBOX_KEY || GATEWAY_KEY;
+
+export const SANDBOX_INSPECTOR_URL = `${SANDBOX_URL}/`;
+
+/** Fallback for the sandbox key's cap until /v1/config says otherwise. */
+export const SANDBOX_CAP_KES = 100;

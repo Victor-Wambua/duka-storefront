@@ -5,7 +5,8 @@ import { PrintIcon } from '../components/Icons';
 import { finalizePaid } from '../checkout/finalize';
 import { formatKES } from '../lib/money';
 import { maskPhone } from '../lib/phone';
-import { INSPECTOR_URL } from '../gateway/config';
+import { INSPECTOR_URL, SANDBOX_INSPECTOR_URL } from '../gateway/config';
+import { SANDBOX_CHARGE_KES, standInNote } from '../gateway/sandbox';
 import { useOnline } from '../hooks/useOnline';
 import { paymentService } from '../payment/instance';
 import { normaliseRef, setUnderReview, type Order } from '../state/orders';
@@ -14,7 +15,7 @@ import NotFound from './NotFound';
 
 export function StatusBadge({ order }: { order: Order }) {
   const map = {
-    paid: ['status-badge--paid', 'Paid'],
+    paid: ['status-badge--paid', order.payment.provider === 'sandbox' ? 'Paid (sandbox test)' : 'Paid'],
     pay_on_delivery: ['status-badge--cod', order.delivery.kind === 'pickup' ? 'Pay at pickup' : 'Pay on delivery'],
     pending_payment: ['status-badge--pending', order.payment.underReview ? 'Payment under review' : 'Awaiting payment'],
     cancelled: ['status-badge--cancelled', 'Cancelled'],
@@ -31,7 +32,9 @@ export default function OrderPage() {
   const [message, setMessage] = useState<string | null>(null);
   const online = useOnline();
   const autoChecked = useRef<string | null>(null);
-  const viaGateway = order?.payment.provider === 'gateway';
+  const viaSandbox = order?.payment.provider === 'sandbox';
+  /** either deployed gateway instance (mock Daraja or Safaricom sandbox) */
+  const viaGateway = order?.payment.provider === 'gateway' || viaSandbox;
 
   async function check(o: Order) {
     setChecking(true);
@@ -75,6 +78,8 @@ export default function OrderPage() {
   if (!order) return <NotFound what="order" />;
 
   const p = order.pricing;
+  const inspectorUrl = viaSandbox ? SANDBOX_INSPECTOR_URL : INSPECTOR_URL;
+  const standIn = viaSandbox ? standInNote(p.total) : null;
   const when = new Date(order.createdAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
 
   return (
@@ -146,9 +151,11 @@ export default function OrderPage() {
             <dt>Payment</dt>
             <dd>
               {order.payment.method === 'mpesa'
-                ? viaGateway
-                  ? 'M-Pesa through the demo gateway (mock Daraja)'
-                  : 'M-Pesa (simulated)'
+                ? viaSandbox
+                  ? `M-Pesa through the Safaricom sandbox (real prompt, ${formatKES(order.payment.chargedKes ?? SANDBOX_CHARGE_KES)} test charge)`
+                  : viaGateway
+                    ? 'M-Pesa through the demo gateway (mock Daraja)'
+                    : 'M-Pesa (simulated)'
                 : order.delivery.kind === 'pickup'
                   ? 'Pay at pickup'
                   : 'Pay on delivery'}
@@ -171,7 +178,7 @@ export default function OrderPage() {
                     )}
                     <span className="no-print">
                       <br />
-                      <a href={INSPECTOR_URL} target="_blank" rel="noopener noreferrer">
+                      <a href={inspectorUrl} target="_blank" rel="noopener noreferrer">
                         Inspect this payment<span className="sr-only"> (opens the gateway inspector in a new tab)</span>
                       </a>{' '}
                       (find it under Recent payments)
@@ -213,6 +220,12 @@ export default function OrderPage() {
           </tbody>
         </table>
 
+        {standIn && (
+          <p className="notice notice--info" data-testid="stand-in-note" style={{ marginTop: 'var(--s-4)' }}>
+            {standIn}.{order.status === 'paid' ? ' The gateway reported the test charge as succeeded.' : ''}
+          </p>
+        )}
+
         <dl className="totals" style={{ marginTop: 'var(--s-4)', maxWidth: '20rem', marginLeft: 'auto' }}>
           <div>
             <dt>Subtotal</dt>
@@ -229,13 +242,20 @@ export default function OrderPage() {
             <dd>{p.deliveryFee === 0 ? 'Free' : formatKES(p.deliveryFee)}</dd>
           </div>
           <div className="totals__total">
-            <dt>{order.status === 'paid' ? 'Total paid' : 'Total'}</dt>
+            <dt>{order.status === 'paid' && !viaSandbox ? 'Total paid' : 'Total'}</dt>
             <dd>{formatKES(p.total)}</dd>
           </div>
         </dl>
 
         <p className="receipt__sim">
-          {viaGateway ? (
+          {viaSandbox ? (
+            <>
+              This is a demonstration receipt. The shop and items are invented and nothing will be delivered. The payment went
+              through Safaricom&rsquo;s Daraja sandbox, which is not simulated, and only a flat KES 1 test charge was sent, never the
+              order total. What a sandbox success does, including whether it could debit a real wallet, has not been verified, so
+              check your own M-Pesa messages.
+            </>
+          ) : viaGateway ? (
             <>
               This is a demonstration receipt. The shop and items are invented. The payment went through a live sandbox gateway whose
               Daraja side is a mock, so no money was charged. Receipt codes starting with MOCK are synthetic.

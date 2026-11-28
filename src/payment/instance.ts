@@ -1,4 +1,4 @@
-import { gatewayService } from '../gateway/instance';
+import { gatewayService, sandboxService } from '../gateway/instance';
 import { mockMpesa } from '../mock/mpesaMock';
 import { providerStore } from '../state/stores';
 import { createRoutingService } from './router';
@@ -7,5 +7,6 @@ import { createRoutingService } from './router';
 export const paymentService = createRoutingService({
   simulator: mockMpesa,
   gateway: gatewayService,
+  sandbox: sandboxService,
   current: () => providerStore.get().choice,
 });

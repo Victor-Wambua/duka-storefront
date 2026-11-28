@@ -51,6 +51,7 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
   const sim = useStore(mockMpesa.sim);
   const prefs = useStore(providerStore);
   const gateway = prefs.choice === 'gateway';
+  const sandbox = prefs.choice === 'sandbox';
   useStore(mockMpesa.server);
   const now = useNow(500);
   const prompts = mockMpesa.livePrompts();
@@ -73,8 +74,8 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
       </div>
       <>
           <p className="sim__note">
-            Demo controls. Pick what the customer does when the next M-Pesa prompt arrives. Settings apply to the next
-            request.
+            Demo controls. Choose where the next M-Pesa payment goes and, for the two providers that can pretend, what the
+            customer does when the prompt arrives. Settings apply to the next request.
           </p>
           <ProviderSwitch value={prefs.choice} onChange={(choice) => providerStore.set((p) => ({ ...p, choice }))} legend="Process the next payment with" />
           {gateway ? (
@@ -100,6 +101,14 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
                 The live gateway sets the timing, so there is no delay or handset here. Nothing is sent to a real phone and no money
                 moves.
               </span>
+            </div>
+          ) : sandbox ? (
+            <div className="field sim__scenario" data-testid="sandbox-no-scenario">
+              <p className="field__hint">
+                Safaricom&rsquo;s real Daraja sandbox decides how each prompt ends, so there is no outcome to pick here and nothing in this
+                panel can change it. You answer on your own phone. A cancelled prompt and a prompt nobody answers are real results seen so
+                far; a payment completed with a PIN has not been tried. Every sandbox payment is a flat KES 1 test charge.
+              </p>
             </div>
           ) : (
           <>

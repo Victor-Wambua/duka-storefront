@@ -692,3 +692,8 @@ td.num, th.num { text-align: right; }
 .gw-refs dt { color: var(--text-muted); font-weight: 700; }
 .gw-refs dd { margin: 0; overflow-wrap: anywhere; white-space: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 .sim__scenario { margin-top: var(--s-2); }
+
+/* Safaricom sandbox acknowledgement: a full-width 44px+ target, never saved between visits. */
+.ack { display: flex; gap: var(--s-3); align-items: flex-start; min-height: 2.75rem; padding: var(--s-2) 0; cursor: pointer; font-weight: 600; }
+.ack input { margin-top: 0.15rem; width: 1.5rem; height: 1.5rem; accent-color: var(--brand); flex: none; }
+.ack:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: 2px; }

@@ -63,11 +63,33 @@ function statusAt(scenario: string, t: number): { status: GatewayStatus; code?: 
   }
 }
 
+/**
+ * How a stubbed SANDBOX payment ends. The cancelled (1032, ~8 s) and no-response (1037, ~26 s) timelines are what
+ * the real Daraja sandbox was seen to do. A success is a pure stand-in: a real one has never been observed.
+ */
+export type SandboxOutcome = 'success' | 'cancelled' | 'no_response' | 'pending' | 'phone_not_approved';
+
+function sandboxStatusAt(outcome: SandboxOutcome, t: number): { status: GatewayStatus; code?: number; desc?: string; flags: string[] } {
+  switch (outcome) {
+    case 'success':
+      return t >= 5000 ? { status: 'succeeded', code: 0, desc: 'The service request is processed successfully.', flags: [] } : { status: 'pending', flags: [] };
+    case 'cancelled':
+      return t >= 8000 ? { status: 'cancelled', code: 1032, desc: 'Request Cancelled by user', flags: [] } : { status: 'pending', flags: [] };
+    case 'no_response':
+      return t >= 26_000 ? { status: 'timed_out', code: 1037, desc: 'DS timeout user cannot be reached', flags: [] } : { status: 'pending', flags: [] };
+    default:
+      return { status: 'pending', flags: [] };
+  }
+}
+
 /** ids stay unique across installs, like the real gateway's, because the app keeps per-payment memory */
 let globalSeq = 0;
 
-export function installFakeGateway(opts: { capKes?: number } = {}): FakeGateway {
-  const cap = opts.capKes ?? 1000;
+export function installFakeGateway(
+  opts: { capKes?: number; sandbox?: { outcome: SandboxOutcome; phonePolicy?: 'any_number' | 'approved_numbers_only' } } = {},
+): FakeGateway {
+  const sandbox = opts.sandbox ?? null;
+  const cap = opts.capKes ?? (sandbox ? 100 : 1000);
   const calls: Call[] = [];
   const byKey = new Map<string, Stored>();
   const byId = new Map<string, Stored>();
@@ -76,14 +98,14 @@ export function installFakeGateway(opts: { capKes?: number } = {}): FakeGateway 
   let nextFail: { kind: string; retryAfter?: string } | null = null;
 
   const view = (s: Stored): GatewayPayment => {
-    const st = statusAt(s.scenario, Date.now() - s.createdMs);
+    const st = sandbox ? sandboxStatusAt(sandbox.outcome, Date.now() - s.createdMs) : statusAt(s.scenario, Date.now() - s.createdMs);
     const base: GatewayPayment = {
       ...s.payment,
       status: st.status,
       flags: st.flags,
       ...(st.code !== undefined ? { result_code: st.code } : {}),
       ...(st.desc ? { result_desc: st.desc } : {}),
-      ...(st.status === 'succeeded' ? { mpesa_receipt: `MOCK${s.payment.id.slice(-6).toUpperCase()}` } : {}),
+      ...(st.status === 'succeeded' ? { mpesa_receipt: `${sandbox ? 'SBX' : 'MOCK'}${s.payment.id.slice(-6).toUpperCase()}` } : {}),
       updated_at: new Date(Date.now()).toISOString(),
     };
     return { ...base, ...(forced.get(s.payment.id) ?? {}) };
@@ -98,6 +120,11 @@ export function installFakeGateway(opts: { capKes?: number } = {}): FakeGateway 
     if (down) throw new TypeError('Failed to fetch');
 
     if (url.pathname === '/v1/config') {
+      if (sandbox) {
+        return json(200, {
+          data: { mode: 'sandbox', moves_real_money: null, phone_policy: sandbox.phonePolicy ?? 'any_number', limits: { publishable_key_max_amount: cap }, scenarios: [] },
+        });
+      }
       return json(200, { data: { mode: 'mock', moves_real_money: false, limits: { publishable_key_max_amount: cap }, scenarios: [] } });
     }
 
@@ -113,6 +140,8 @@ export function installFakeGateway(opts: { capKes?: number } = {}): FakeGateway 
       }
       const key = headers['Idempotency-Key'];
       if (!key) return err(400, 'idempotency_key_required', 'Idempotency-Key required');
+      if (sandbox && body && 'scenario' in body) return err(400, 'validation_error', 'scenario is not accepted in sandbox mode', 'scenario');
+      if (sandbox?.outcome === 'phone_not_approved') return err(403, 'phone_not_approved', 'This sandbox only accepts approved phone numbers');
       if (typeof body?.amount === 'number' && body.amount > cap) return err(422, 'amount_exceeds_key_cap', 'Amount is over the cap for this key');
       const bodyKey = JSON.stringify(body, Object.keys(body ?? {}).sort());
       const seen = byKey.get(key);
@@ -137,9 +166,9 @@ export function installFakeGateway(opts: { capKes?: number } = {}): FakeGateway 
           status: 'pending',
           created_at: created,
           updated_at: created,
-          expires_at: new Date(Date.now() + 90_000).toISOString(),
+          expires_at: new Date(Date.now() + (sandbox ? 150_000 : 90_000)).toISOString(),
           flags: [],
-          checkout_request_id: `ws_CO_MOCK_fake${seq}`,
+          checkout_request_id: `ws_CO_${sandbox ? 'SBX' : 'MOCK'}_fake${seq}`,
         },
       };
       byKey.set(key, stored);

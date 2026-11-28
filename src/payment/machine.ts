@@ -7,7 +7,7 @@ import type { FailReason, LookupResult, StatusResult } from './types';
  *                 |              |-> failed(cancelled | wrong_pin | insufficient_funds | timeout | declined)
  *                 |              |-> review   (the backend will not say paid or failed yet)
  *                 |              |-> expired  (we stopped waiting; outcome unknown)
- *                 '-> failed(unreachable | rate_limited | over_cap | rejected)
+ *                 '-> failed(unreachable | rate_limited | over_cap | rejected | phone_not_approved)
  *
  * Time and I/O live in the controller; this file only decides what each event
  * means in each state. Events that make no sense in the current state return
@@ -45,7 +45,7 @@ export type PaymentEvent =
   | { type: 'submit'; attempt: number; idempotencyKey: string }
   | { type: 'accepted'; checkoutRequestId: string; now: number; windowMs: number; reused?: boolean; promptEndsAt?: number }
   | { type: 'already_paid'; receipt: string; paidAt: number }
-  | { type: 'request_failed'; detail?: string; reason?: Extract<FailReason, 'unreachable' | 'rate_limited' | 'over_cap' | 'rejected'>; retryAfterSec?: number }
+  | { type: 'request_failed'; detail?: string; reason?: Extract<FailReason, 'unreachable' | 'rate_limited' | 'over_cap' | 'rejected' | 'phone_not_approved'>; retryAfterSec?: number }
   | { type: 'status'; result: StatusResult }
   | { type: 'poll_failed' }
   | { type: 'deadline'; now: number }

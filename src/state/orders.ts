@@ -1,5 +1,6 @@
 import type { StoreSpec } from '../lib/persist';
 import type { PriceBreakdown } from '../lib/pricing';
+import type { ProviderId } from '../payment/types';
 
 export type OrderStatus = 'pending_payment' | 'paid' | 'pay_on_delivery' | 'cancelled';
 
@@ -28,13 +29,15 @@ export interface Order {
     receipt: string | null;
     paidAt: number | null;
     /** which backend took the payment (absent on orders made before the gateway existed: the simulator) */
-    provider?: 'gateway' | 'simulator';
+    provider?: ProviderId;
     /** gateway payment id (pay_...), for the inspector and for polling */
     gatewayPaymentId?: string | null;
     /** Daraja's CheckoutRequestID as reported by the gateway */
     darajaCheckoutId?: string | null;
     /** the gateway is holding this payment for review: it is not paid */
     underReview?: boolean;
+    /** what the provider was actually asked to charge, when that is not the order total (sandbox: a flat test charge) */
+    chargedKes?: number;
   };
 }
 
@@ -72,7 +75,7 @@ export const recordAttempt = (
   ref: string,
   attempt: number,
   checkoutRequestId: string | null,
-  extra: { provider?: 'gateway' | 'simulator'; darajaCheckoutId?: string | null } = {},
+  extra: { provider?: ProviderId; darajaCheckoutId?: string | null; gatewayPaymentId?: string; chargedKes?: number } = {},
 ) =>
   update(orders, ref, (o) =>
     o.status === 'pending_payment'
@@ -86,10 +89,11 @@ export const recordAttempt = (
             ...(extra.provider
               ? {
                   provider: extra.provider,
-                  gatewayPaymentId: extra.provider === 'gateway' ? checkoutRequestId : null,
+                  gatewayPaymentId: extra.provider === 'simulator' ? null : (extra.gatewayPaymentId ?? checkoutRequestId),
                   darajaCheckoutId: extra.darajaCheckoutId ?? null,
                 }
               : {}),
+            ...(extra.chargedKes !== undefined ? { chargedKes: extra.chargedKes } : {}),
           },
         }
       : o,
@@ -140,7 +144,7 @@ export interface CheckoutSession {
   checkoutRequestId: string | null;
   requestedAt: number | null;
   /** which backend the in-flight attempt went to */
-  provider?: 'gateway' | 'simulator';
+  provider?: ProviderId;
   /** Daraja's CheckoutRequestID, when the backend gave one */
   darajaCheckoutId?: string | null;
   /** The Idempotency-Key of an attempt whose outcome we do not know yet (request sent, no answer seen). */

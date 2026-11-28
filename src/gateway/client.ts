@@ -27,21 +27,26 @@ export interface CreatePaymentInput {
   /** our order number */
   reference: string;
   description?: string;
-  /** mock mode only */
+  /** mock mode only: the sandbox gateway accepts no `scenario` */
   scenario?: string;
 }
 
 export interface GatewayConfig {
+  /** 'mock' or 'sandbox' */
   mode: string;
-  moves_real_money: boolean;
+  /** false in mock mode; null in sandbox mode (the gateway does not claim to know) */
+  moves_real_money: boolean | null;
   limits: { publishable_key_max_amount: number };
   scenarios: string[];
+  /** 'any_number_simulated' (mock), 'any_number' or 'approved_numbers_only' (sandbox) */
+  phone_policy?: string;
 }
 
 export type GatewayErrorKind =
   | 'unreachable'
   | 'rate_limited'
   | 'over_cap'
+  | 'phone_not_approved'
   | 'validation'
   | 'idempotency_conflict'
   | 'reference_pending'
@@ -153,6 +158,7 @@ export function createGatewayClient(opts: ClientOptions = {}): GatewayClient {
     if (res.status === 429) {
       throw new GatewayError('rate_limited', message, { ...extra, retryAfterSec: parseRetryAfter(res.headers.get('Retry-After')) ?? 30 });
     }
+    if (code === 'phone_not_approved') throw new GatewayError('phone_not_approved', message, extra);
     if (code === 'amount_exceeds_key_cap') throw new GatewayError('over_cap', message, extra);
     if (code === 'idempotency_conflict') throw new GatewayError('idempotency_conflict', message, extra);
     if (code === 'reference_pending') throw new GatewayError('reference_pending', message, extra);

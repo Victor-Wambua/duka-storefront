@@ -8,6 +8,7 @@ import { AnnouncerProvider } from '../src/components/Announcer';
 import { DEFAULT_SIM, mockMpesa } from '../src/mock/mpesaMock';
 import { CartProvider } from '../src/state/CartContext';
 import { cartStore, providerStore, resetDemoData } from '../src/state/stores';
+import type { ProviderId } from '../src/payment/types';
 import type { CartState } from '../src/state/cart';
 
 export function renderApp(route = '/') {
@@ -23,7 +24,7 @@ export function renderApp(route = '/') {
 }
 
 /** The in-browser simulator is the provider unless a test opts into the live gateway (stubbed). */
-export function resetWorld(sim: Partial<typeof DEFAULT_SIM> = {}, provider: 'simulator' | 'gateway' = 'simulator') {
+export function resetWorld(sim: Partial<typeof DEFAULT_SIM> = {}, provider: ProviderId = 'simulator') {
   resetDemoData();
   providerStore.set({ choice: provider, scenario: 'success' });
   mockMpesa.reset();

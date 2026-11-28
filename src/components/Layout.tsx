@@ -45,9 +45,11 @@ export function Layout() {
       <div className="demo-banner no-print">
         <p>
           <strong>Demo shop.</strong>{' '}
-          {provider === 'gateway'
-            ? 'Products and stock are invented. M-Pesa payments go to a live sandbox gateway that runs a mock Daraja: no real prompt is sent and no money moves.'
-            : 'Products, stock and payments are simulated in your browser. No money moves.'}
+          {provider === 'sandbox'
+            ? 'Products and stock are invented and nothing will be delivered. The M-Pesa payment goes to Safaricom\u2019s sandbox and sends a real prompt to the phone number you enter, as a KES 1 test charge. Use only your own number.'
+            : provider === 'gateway'
+              ? 'Products and stock are invented. M-Pesa payments go to a live sandbox gateway that runs a mock Daraja: no real prompt is sent and no money moves.'
+              : 'Products, stock and payments are simulated in your browser. No money moves.'}
         </p>
         <button
           ref={simToggle}
@@ -105,11 +107,21 @@ export function Layout() {
         <div className="container site-footer__grid">
           <section aria-labelledby="f-about">
             <h2 id="f-about">Mama Lucy&rsquo;s (fictional)</h2>
-            <p>
-              A demo shop front-end. The shop, products and prices are made up. Payments go through a live sandbox
-              payments gateway that runs a mock Daraja, so the payment, its ledger and its checks are real but the M-Pesa side
-              is simulated and no money moves. An in-browser simulator is the offline fallback.
-            </p>
+            {provider === 'sandbox' ? (
+              <p>
+                A demo shop front-end. The shop, products and prices are made up and nothing will be delivered. You chose
+                Safaricom&rsquo;s Daraja sandbox, which is not simulated: it sends a real M-Pesa prompt to the number you enter,
+                for a flat KES 1 test charge. Nothing in this demo has been tested with a PIN, so what approving it does is not
+                verified. The mock-Daraja gateway and the in-browser simulator are the two choices that send no real prompt.
+              </p>
+            ) : (
+              <p>
+                A demo shop front-end. The shop, products and prices are made up. Payments go through a live sandbox
+                payments gateway that runs a mock Daraja, so the payment, its ledger and its checks are real but the M-Pesa side
+                is simulated and no money moves. An in-browser simulator is the offline fallback. A third choice, off unless you
+                pick it, sends a real prompt through Safaricom&rsquo;s sandbox.
+              </p>
+            )}
           </section>
           <section aria-labelledby="f-help">
             <h2 id="f-help">Shop</h2>
@@ -129,7 +141,9 @@ export function Layout() {
             <h2 id="f-code">Open source</h2>
             <p>
               <a href="https://github.com/Victor-Wambua/duka-storefront">Source on GitHub</a>. Built by Victor Wambua.
-              Use the &ldquo;Phone simulator&rdquo; button in the yellow bar at the top to pick how each payment ends.
+              {provider === 'sandbox'
+                ? ' Safaricom decides how a sandbox prompt ends, so the Phone simulator has nothing to pick for it.'
+                : ' Use the \u201cPhone simulator\u201d button in the yellow bar at the top to pick how each payment ends.'}
             </p>
           </section>
         </div>

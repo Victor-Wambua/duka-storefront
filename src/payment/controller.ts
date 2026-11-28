@@ -126,7 +126,7 @@ export class PaymentController {
         this.dispatch({
           type: 'request_failed',
           ...(err instanceof Error ? { detail: err.message } : {}),
-          ...(code === 'rate_limited' || code === 'over_cap' || code === 'rejected' ? { reason: code } : {}),
+          ...(code === 'rate_limited' || code === 'over_cap' || code === 'rejected' || code === 'phone_not_approved' ? { reason: code } : {}),
           ...(err instanceof PaymentServiceError && err.retryAfterSec !== undefined ? { retryAfterSec: err.retryAfterSec } : {}),
         });
       }

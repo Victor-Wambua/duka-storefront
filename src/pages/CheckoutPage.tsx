@@ -6,9 +6,11 @@ import { PaymentPanel, type GatewayRefs } from '../components/PaymentPanel';
 import { ProviderSwitch } from '../components/ProviderSwitch';
 import { abandonOrder, finalizeCod, finalizePaid } from '../checkout/finalize';
 import { validateCheckout, type CheckoutErrors, type CheckoutValues } from '../checkout/validate';
+import { INSPECTOR_URL, SANDBOX_INSPECTOR_URL } from '../gateway/config';
 import { newIdempotencyKey } from '../gateway/idempotency';
+import { SANDBOX_CHARGE_KES, SANDBOX_WARNING, standInNote } from '../gateway/sandbox';
 import { scenarioInfo } from '../gateway/scenarios';
-import { isGatewayId } from '../gateway/service';
+import { providerOfId, rawPaymentId } from '../gateway/service';
 import { useGatewayStatus } from '../hooks/useGatewayStatus';
 import { useOnline } from '../hooks/useOnline';
 import { usePaymentController } from '../hooks/usePaymentController';
@@ -32,6 +34,16 @@ import { ordersStore, providerStore, sessionStore, useStore } from '../state/sto
 import type { CartView } from '../state/cartView';
 
 const MIN_FORM: CheckoutValues = { name: '', phone: '', address: '', method: 'mpesa' };
+
+/** The ids a visitor can look for in the inspector of whichever gateway instance holds the payment. */
+function refsFor(provider: ProviderId, checkoutRequestId: string, darajaCheckoutId: string | null | undefined): GatewayRefs | null {
+  if (provider === 'simulator') return null;
+  return {
+    paymentId: rawPaymentId(checkoutRequestId),
+    darajaCheckoutId: darajaCheckoutId ?? null,
+    inspectorUrl: provider === 'sandbox' ? SANDBOX_INSPECTOR_URL : INSPECTOR_URL,
+  };
+}
 
 function buildOrder(ref: string, view: CartView, v: CheckoutValues, msisdn: string): Order {
   const area = view.area!;
@@ -78,6 +90,11 @@ export default function CheckoutPage() {
   const [activeProvider, setActiveProvider] = useState<ProviderId>(() => providerStore.get().choice);
   const [refs, setRefs] = useState<GatewayRefs | null>(null);
   const [scenarioLabel, setScenarioLabel] = useState<string | null>(null);
+  /**
+   * The Safaricom sandbox sends a real prompt, so the shopper has to tick an acknowledgement. It is plain
+   * component state on purpose: never saved, cleared whenever a payment starts, so it is ticked again each time.
+   */
+  const [sandboxAck, setSandboxAck] = useState(false);
 
   const { state, controller } = usePaymentController(
     {
@@ -86,7 +103,7 @@ export default function CheckoutPage() {
       onAttempt: ({ attempt, checkoutRequestId, darajaCheckoutId }) => {
         const s = sessionStore.get();
         if (!s) return;
-        const provider: ProviderId = isGatewayId(checkoutRequestId) ? 'gateway' : 'simulator';
+        const provider: ProviderId = providerOfId(checkoutRequestId);
         sessionStore.set({
           ...s,
           attempt,
@@ -96,8 +113,15 @@ export default function CheckoutPage() {
           darajaCheckoutId: darajaCheckoutId ?? null,
           pendingKey: null, // the request got an answer: the next attempt is a new one with a new key
         });
-        ordersStore.set((o) => recordAttempt(o, s.orderRef, attempt, checkoutRequestId, { provider, darajaCheckoutId: darajaCheckoutId ?? null }));
-        setRefs(provider === 'gateway' ? { paymentId: checkoutRequestId, darajaCheckoutId: darajaCheckoutId ?? null } : null);
+        ordersStore.set((o) =>
+          recordAttempt(o, s.orderRef, attempt, checkoutRequestId, {
+            provider,
+            darajaCheckoutId: darajaCheckoutId ?? null,
+            gatewayPaymentId: rawPaymentId(checkoutRequestId),
+            ...(provider === 'sandbox' ? { chargedKes: SANDBOX_CHARGE_KES } : {}),
+          }),
+        );
+        setRefs(refsFor(provider, checkoutRequestId, darajaCheckoutId));
       },
     },
     (c) => {
@@ -107,10 +131,10 @@ export default function CheckoutPage() {
       if (s && order && order.status === 'pending_payment' && s.checkoutRequestId && s.requestedAt) {
         const provider: ProviderId = s.provider ?? 'simulator';
         setActiveProvider(provider);
-        setRefs(provider === 'gateway' ? { paymentId: s.checkoutRequestId, darajaCheckoutId: s.darajaCheckoutId ?? null } : null);
+        setRefs(refsFor(provider, s.checkoutRequestId, s.darajaCheckoutId));
         c.resume({ attempt: s.attempt, orderRef: s.orderRef, checkoutRequestId: s.checkoutRequestId, startedAt: s.requestedAt });
         // Past the wait window already: ask the gateway what happened rather than make the visitor click.
-        if (provider === 'gateway' && c.getState().status === 'expired') {
+        if (provider !== 'simulator' && c.getState().status === 'expired') {
           void c.checkStatus({ orderRef: s.orderRef, msisdn: order.customer.msisdn, provider, amount: order.pricing.total });
         }
         setRestored(true);
@@ -154,14 +178,20 @@ export default function CheckoutPage() {
   }, [state.status, uid]);
 
   const amount = order?.pricing.total ?? view.pricing.total;
+  /** what the payment on screen actually charges: the sandbox takes a flat test charge, never the order total */
+  const chargedAmount = activeProvider === 'sandbox' ? SANDBOX_CHARGE_KES : amount;
   const phoneDisplay = phone.ok ? phone.display : form.phone;
 
   // The live gateway: reachable, under the demo key's cap? Probed only while it is the chosen provider.
-  const usingGateway = form.method === 'mpesa' && prefs.choice === 'gateway';
-  const gw = useGatewayStatus(usingGateway, online);
-  const overCap = usingGateway && view.pricing.total > gw.capKes;
+  const usingMock = form.method === 'mpesa' && prefs.choice === 'gateway';
+  const usingSandbox = form.method === 'mpesa' && prefs.choice === 'sandbox';
+  const usingGateway = usingMock || usingSandbox; // either deployed instance
+  const gw = useGatewayStatus(usingGateway, online, usingSandbox ? 'sandbox' : 'gateway');
+  // The sandbox is sent KES 1, so the order total cannot put it over its cap.
+  const overCap = usingMock && view.pricing.total > gw.capKes;
   const gatewayDown = usingGateway && online && (gw.state === 'unreachable' || gw.state === 'rate_limited');
-  const payBlocked = usingGateway && (!online || gatewayDown || overCap);
+  const payBlocked = (usingGateway && (!online || gatewayDown || overCap)) || (usingSandbox && !sandboxAck);
+  const instanceName = usingSandbox ? 'Safaricom sandbox gateway' : 'live payment gateway';
 
   // A payment held for review is not paid: remember that on the order so the Orders pages say so.
   useEffect(() => {
@@ -170,7 +200,10 @@ export default function CheckoutPage() {
     if (ref) ordersStore.set((o) => setUnderReview(o, ref, true));
   }, [state.status]);
 
-  const chooseProvider = (choice: ProviderId) => providerStore.set((p) => ({ ...p, choice }));
+  const chooseProvider = (choice: ProviderId) => {
+    setSandboxAck(false);
+    providerStore.set((p) => ({ ...p, choice }));
+  };
 
   function set<K extends keyof CheckoutValues>(k: K, v: CheckoutValues[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -191,6 +224,7 @@ export default function CheckoutPage() {
   async function startMpesa(msisdn: string) {
     const c = controller.current;
     if (!c) return;
+    if (providerStore.get().choice === 'sandbox' && !sandboxAck) return; // a real prompt needs the acknowledgement
     const fp = fingerprintOf(view.lines.map((l) => ({ variantId: l.variant.id, qty: l.line.qty })), view.promo?.ok ? view.promo.promo.code : null, area!.id, view.pricing.total);
     const s = sessionFor(fp);
     sessionStore.set(s);
@@ -199,8 +233,17 @@ export default function CheckoutPage() {
     const provider = providerStore.get().choice;
     setActiveProvider(provider);
     setRefs(null);
-    const params: PayParams = { orderRef: s.orderRef, attempt: s.attempt + 1, msisdn, amount: live.pricing.total, provider };
-    if (provider === 'gateway') {
+    // The sandbox gets a flat test charge; the order itself keeps its real total.
+    const params: PayParams = { orderRef: s.orderRef, attempt: s.attempt + 1, msisdn, amount: provider === 'sandbox' ? SANDBOX_CHARGE_KES : live.pricing.total, provider };
+    if (provider === 'sandbox') {
+      setScenarioLabel(null);
+      setSandboxAck(false); // used up: the next real prompt needs a fresh tick
+      const bodySig = `${msisdn}|${SANDBOX_CHARGE_KES}|sandbox`;
+      const kept = s.pendingKey && s.pendingKey.bodySig === bodySig ? s.pendingKey.key : null;
+      const key = kept ?? newIdempotencyKey();
+      sessionStore.set({ ...s, pendingKey: { key, bodySig } });
+      params.idempotencyKey = key;
+    } else if (provider === 'gateway') {
       const scenario = providerStore.get().scenario;
       setScenarioLabel(scenarioInfo(scenario)?.label ?? null);
       // One Idempotency-Key per attempt, saved before the request goes out. A double click or a reload
@@ -218,7 +261,7 @@ export default function CheckoutPage() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (busy || (form.method === 'mpesa' && payBlocked)) return;
+    if (busy || (form.method === 'mpesa' && payBlocked)) return; // includes: sandbox not acknowledged
     setSubmitted(true);
     if (Object.keys(errors).length > 0 || !phone.ok || !area || view.lines.length === 0) {
       // Put focus on the first field that needs fixing; its message sits right under it.
@@ -239,7 +282,8 @@ export default function CheckoutPage() {
   }
 
   function retry() {
-    if (phone.ok) void startMpesa(phone.msisdn);
+    // A sandbox retry goes back through the form (the panel offers no direct retry), so it cannot skip the acknowledgement.
+    if (phone.ok && activeProvider !== 'sandbox') void startMpesa(phone.msisdn);
   }
 
   function payOnDeliveryInstead() {
@@ -258,6 +302,11 @@ export default function CheckoutPage() {
 
   function useSimulatorInstead() {
     chooseProvider('simulator');
+    controller.current?.reset();
+  }
+
+  function useMockGatewayInstead() {
+    chooseProvider('gateway');
     controller.current?.reset();
   }
 
@@ -285,7 +334,9 @@ export default function CheckoutPage() {
   const fieldId = (k: string) => `${uid}-${k}`;
   const payLabel =
     form.method === 'mpesa'
-      ? `Pay ${formatKES(view.pricing.total)} with M-Pesa`
+      ? usingSandbox
+        ? `Send a ${formatKES(SANDBOX_CHARGE_KES)} test prompt with M-Pesa`
+        : `Pay ${formatKES(view.pricing.total)} with M-Pesa`
       : area?.kind === 'pickup'
         ? 'Place order, pay at pickup'
         : 'Place order, pay on delivery';
@@ -297,7 +348,7 @@ export default function CheckoutPage() {
         <div>
           {!online && showForm && usingGateway && (
             <p className="notice notice--warn" role="status">
-              Checkout needs a connection to reach the live payment gateway. Your cart is saved: reconnect, or switch to the
+              Checkout needs a connection to reach the {instanceName}. Your cart is saved: reconnect, or switch to the
               in-browser simulator or pay on delivery, both of which work offline.
             </p>
           )}
@@ -308,10 +359,12 @@ export default function CheckoutPage() {
             scenarioLabel={scenarioLabel}
             refs={refs}
             capKes={gw.capKes}
+            orderTotal={amount}
             onUseSimulator={useSimulatorInstead}
+            onUseMockGateway={useMockGatewayInstead}
             onViewOrder={viewOrder}
             phoneDisplay={phoneDisplay}
-            amount={amount}
+            amount={chargedAmount}
             orderRef={session?.orderRef ?? null}
             online={online}
             pickup={area?.kind === 'pickup'}
@@ -383,8 +436,13 @@ export default function CheckoutPage() {
                 />
                 <span id={`${fieldId('phone')}-msg`} aria-live="polite" className={phone.ok ? 'field__ok' : showErr('phone') ? 'field__error' : 'field__hint'}>
                   {phone.ok
-                    ? `The prompt will go to ${phone.display} (+${phone.msisdn}).`
-                    : (showErr('phone') ?? 'Use the number that has M-Pesa. Any format works: 0712 345 678, 0112 345 678 or +254 712 345 678.')}
+                    ? usingSandbox
+                      ? `A real M-Pesa prompt will go to ${phone.display} (+${phone.msisdn}).`
+                      : `The prompt will go to ${phone.display} (+${phone.msisdn}).`
+                    : (showErr('phone') ??
+                      (usingSandbox
+                        ? 'Enter your own M-Pesa number. A real prompt is sent to it.'
+                        : 'Use the number that has M-Pesa. Any format works: 0712 345 678, 0112 345 678 or +254 712 345 678.'))}
                 </span>
               </div>
             </section>
@@ -426,9 +484,11 @@ export default function CheckoutPage() {
                   <span>
                     <strong>M-Pesa</strong>
                     <small>
-                      {prefs.choice === 'gateway'
-                        ? 'A live sandbox gateway creates the payment and a mock Daraja answers it. No real prompt is sent to your phone.'
-                        : 'A prompt appears on a simulated phone. It runs in this browser and nothing is sent anywhere.'}
+                      {prefs.choice === 'sandbox'
+                        ? 'The Safaricom sandbox sends a real M-Pesa prompt to the number you enter, for a KES 1 test charge.'
+                        : prefs.choice === 'gateway'
+                          ? 'A live sandbox gateway creates the payment and a mock Daraja answers it. No real prompt is sent to your phone.'
+                          : 'A prompt appears on a simulated phone. It runs in this browser and nothing is sent anywhere.'}
                     </small>
                   </span>
                 </label>
@@ -443,6 +503,24 @@ export default function CheckoutPage() {
               {form.method === 'mpesa' && (
                 <>
                   <ProviderSwitch value={prefs.choice} onChange={chooseProvider} disabled={busy} />
+                  {usingSandbox && (
+                    <div className="notice notice--warn provider-notice" data-testid="sandbox-warning">
+                      <p>
+                        <strong>Real prompt.</strong> {SANDBOX_WARNING}
+                      </p>
+                      <p data-testid="stand-in-note">{standInNote(view.pricing.total)}.</p>
+                      {gw.phonePolicy === 'approved_numbers_only' && (
+                        <p data-testid="approved-only-hint">
+                          This sandbox only accepts phone numbers its owner has approved. If yours is not one of them, it will say so and no
+                          prompt is sent.
+                        </p>
+                      )}
+                      <label className="ack">
+                        <input type="checkbox" checked={sandboxAck} onChange={(e) => setSandboxAck(e.target.checked)} />
+                        <span>I understand. The number I enter is my own, and I accept a real prompt on it.</span>
+                      </label>
+                    </div>
+                  )}
                   {usingGateway && online && (gatewayDown || overCap) && (
                     <div className="notice notice--warn provider-notice" role="status" data-testid="gateway-issue">
                       {overCap ? (
@@ -452,17 +530,24 @@ export default function CheckoutPage() {
                         </p>
                       ) : gw.state === 'rate_limited' ? (
                         <p>
-                          The live gateway is rate limiting this demo
-                          {gw.retryAfterSec ? `. Try again in about ${gw.retryAfterSec} seconds` : ''}. Nothing was charged. You can use
-                          the in-browser simulator or pay on delivery meanwhile.
+                          The {usingSandbox ? 'Safaricom sandbox gateway' : 'live gateway'} is rate limiting this demo
+                          {gw.retryAfterSec ? `. Try again in about ${gw.retryAfterSec} seconds` : ''}.{' '}
+                          {usingSandbox ? 'No prompt was sent.' : 'Nothing was charged.'} You can use{' '}
+                          {usingSandbox ? 'the mock gateway, ' : ''}the in-browser simulator or pay on delivery meanwhile.
                         </p>
                       ) : (
                         <p>
-                          The live payment gateway is not reachable right now, so a payment cannot be started. Nothing was charged. Use
-                          the in-browser simulator or pay on delivery, or check again.
+                          The {instanceName} is not reachable right now, so a payment cannot be started.{' '}
+                          {usingSandbox ? 'No prompt was sent.' : 'Nothing was charged.'} Use {usingSandbox ? 'the mock gateway, ' : ''}the
+                          in-browser simulator or pay on delivery, or check again.
                         </p>
                       )}
                       <div className="provider-notice__actions">
+                        {usingSandbox && (
+                          <button type="button" className="btn btn--sm" onClick={() => chooseProvider('gateway')}>
+                            Use the mock gateway
+                          </button>
+                        )}
                         <button type="button" className="btn btn--sm" onClick={() => chooseProvider('simulator')}>
                           Use the in-browser simulator
                         </button>
@@ -477,7 +562,7 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                   )}
-                  {usingGateway && !overCap && !gatewayDown && online && (
+                  {usingMock && !overCap && !gatewayDown && online && (
                     <p className="field__hint">
                       The live gateway receives your phone number to create the payment and returns it masked. In its mock mode it never
                       sends a real prompt, so a made-up number like 0700 000 001 works. Pick the outcome with the Phone simulator button
@@ -495,7 +580,9 @@ export default function CheckoutPage() {
                 </p>
               )}
               <p className="sample-note" style={{ marginTop: 'var(--s-3)', marginBottom: 0 }}>
-                Demo only: no money moves, whichever option you choose.
+                {usingSandbox
+                  ? 'Demo shop: the goods are invented and nothing will be delivered. The sandbox sends a real prompt for a KES 1 test charge, and what approving it does has not been verified.'
+                  : 'Demo only: no money moves, whichever option you choose.'}
               </p>
             </section>
           </form>

@@ -1,18 +1,22 @@
 /**
  * The contract between the storefront and "the payment backend".
- * Two implementations sit behind it: `src/mock/mpesaMock.ts` runs in the
- * browser (the offline fallback) and `src/gateway/service.ts` talks to the live
- * payments gateway, which in turn talks to Daraja (a mock Daraja for now).
+ * Three providers sit behind it: `src/mock/mpesaMock.ts` runs in the browser (the offline
+ * fallback), and `src/gateway/service.ts` talks to a deployed payments gateway in one of two
+ * modes: 'gateway' is the instance whose Daraja is a mock, 'sandbox' is the instance that talks
+ * to Safaricom's real Daraja sandbox.
  */
 
 /** Which backend created or owns a payment. */
-export type ProviderId = 'gateway' | 'simulator';
+export type ProviderId = 'gateway' | 'sandbox' | 'simulator';
+
+export const PROVIDER_IDS: readonly ProviderId[] = ['gateway', 'sandbox', 'simulator'];
 
 /** Endings that come from the payment itself (the backend answered). */
 export type ResultFailReason = 'cancelled' | 'wrong_pin' | 'insufficient_funds' | 'timeout' | 'declined';
 
 /** `declined` is any other Daraja failure code, shown with its own description. The rest never reached a payment. */
-export type FailReason = ResultFailReason | 'unreachable' | 'rate_limited' | 'over_cap' | 'rejected';
+/** `phone_not_approved`: the sandbox is restricted to numbers its owner approved, and this was not one. */
+export type FailReason = ResultFailReason | 'unreachable' | 'rate_limited' | 'over_cap' | 'rejected' | 'phone_not_approved';
 
 export interface InitiateRequest {
   orderRef: string;
@@ -69,7 +73,7 @@ export interface LookupQuery {
 }
 
 export class PaymentServiceError extends Error {
-  readonly code: 'unreachable' | 'invalid_request' | 'not_found' | 'rate_limited' | 'over_cap' | 'rejected';
+  readonly code: 'unreachable' | 'invalid_request' | 'not_found' | 'rate_limited' | 'over_cap' | 'rejected' | 'phone_not_approved';
   /** rate_limited: seconds to wait, from the Retry-After header */
   readonly retryAfterSec?: number;
   constructor(code: PaymentServiceError['code'], message: string, opts: { retryAfterSec?: number } = {}) {

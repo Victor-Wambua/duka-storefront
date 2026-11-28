@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { describeFlags, GATEWAY_FAIL_COPY } from '../gateway/copy';
+import { describeFlags, GATEWAY_FAIL_COPY, SANDBOX_FAIL_COPY } from '../gateway/copy';
 import { INSPECTOR_URL } from '../gateway/config';
+import { SANDBOX_PENDING_COPY, standInNote } from '../gateway/sandbox';
 import { useNow } from '../hooks/useNow';
 import { formatKES } from '../lib/money';
 import type { ExpiredCheck, PaymentState } from '../payment/machine';
@@ -36,6 +37,8 @@ export const FAIL_COPY: Record<FailReason, { title: string; body: string }> = {
 export interface GatewayRefs {
   paymentId: string | null;
   darajaCheckoutId: string | null;
+  /** the inspector of the gateway instance that holds the payment (defaults to the mock-Daraja one) */
+  inspectorUrl?: string;
 }
 
 export interface PaymentPanelProps {
@@ -48,6 +51,10 @@ export interface PaymentPanelProps {
   /** the live gateway's per-payment cap, for the over-cap message */
   capKes?: number;
   onUseSimulator?: () => void;
+  /** sandbox only: switch to the mock-Daraja gateway */
+  onUseMockGateway?: () => void;
+  /** the order total; for the sandbox `amount` is the flat test charge actually sent and this is what it stands in for */
+  orderTotal?: number;
   onViewOrder?: () => void;
   phoneDisplay: string;
   amount: number;
@@ -80,7 +87,7 @@ function InspectLink({ refs }: { refs: GatewayRefs | null | undefined }) {
   return (
     <div className="gw-refs" data-testid="gateway-refs">
       <p className="field__hint">
-        <a href={INSPECTOR_URL} target="_blank" rel="noopener noreferrer">
+        <a href={refs.inspectorUrl ?? INSPECTOR_URL} target="_blank" rel="noopener noreferrer">
           Inspect this payment<span className="sr-only"> (opens the gateway inspector in a new tab)</span>
         </a>
         . The inspector has no link to a single payment: find it under &ldquo;Recent payments&rdquo; with the ids below.
@@ -106,20 +113,23 @@ function InspectLink({ refs }: { refs: GatewayRefs | null | undefined }) {
 }
 
 /** "Try again", held back until the gateway's Retry-After has passed. */
-function RetryButton({ seconds, onClick }: { seconds: number; onClick: () => void }) {
+function RetryButton({ seconds, onClick, label = 'Try again' }: { seconds: number; onClick: () => void; label?: string }) {
   const [until] = useState(() => Date.now() + seconds * 1000);
   const now = useNow(1000);
   const left = Math.max(0, Math.ceil((until - now) / 1000));
   return (
     <button type="button" className="btn btn--primary" onClick={onClick} disabled={left > 0}>
-      {left > 0 ? `Try again in ${left}s` : 'Try again'}
+      {left > 0 ? `${label} in ${left}s` : label}
     </button>
   );
 }
 
 export function PaymentPanel(p: PaymentPanelProps) {
   const { state } = p;
-  const gw = p.provider === 'gateway';
+  const sbx = p.provider === 'sandbox';
+  /** either deployed gateway instance */
+  const gw = p.provider === 'gateway' || sbx;
+  const standIn = sbx && p.orderTotal !== undefined && p.orderTotal !== p.amount ? standInNote(p.orderTotal) : null;
   const headingRef = useRef<HTMLHeadingElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
   const awaiting = state.status === 'awaiting_customer';
@@ -148,7 +158,9 @@ export function PaymentPanel(p: PaymentPanelProps) {
           Sending your payment request
         </h2>
         <p className="pay__lead" role="status">
-          {gw
+          {sbx
+            ? 'Creating the payment on the Safaricom sandbox gateway, which asks Safaricom to send the prompt. This takes a few seconds. Please do not close this page.'
+            : gw
             ? 'Creating the payment on the live gateway. This takes a few seconds. Please do not close this page.'
             : 'Contacting M-Pesa. This takes a few seconds. Please do not close this page.'}
         </p>
@@ -173,24 +185,46 @@ export function PaymentPanel(p: PaymentPanelProps) {
           <h2 id="pay-h" ref={headingRef} tabIndex={-1}>
             Check your phone
           </h2>
-          <p className="pay__lead">
-            The gateway asked its mock Daraja to send an M-Pesa prompt for <strong className="num">{formatKES(p.amount)}</strong> to{' '}
-            <strong className="num">{p.phoneDisplay}</strong>.
-          </p>
-          <p className="notice notice--info pay__note">
-            This is a demo, so no real prompt reaches your phone and no money moves. The mock Daraja answers by itself
-            {p.scenarioLabel ? (
-              <>
-                {' '}
-                as you chose: <strong>{p.scenarioLabel}</strong>
-              </>
-            ) : null}
-            . Use the Phone simulator button above to pick a different outcome for the next payment.
-          </p>
+          {sbx ? (
+            <>
+              <p className="pay__lead">
+                The gateway asked Safaricom&rsquo;s Daraja sandbox to send an M-Pesa prompt for <strong className="num">{formatKES(p.amount)}</strong> to{' '}
+                <strong className="num">{p.phoneDisplay}</strong>.
+              </p>
+              <p className="pay__lead" role="status" data-testid="sandbox-pending">
+                {SANDBOX_PENDING_COPY}
+              </p>
+              {standIn && (
+                <p className="notice notice--info pay__note" data-testid="stand-in-note">
+                  {standIn}.
+                </p>
+              )}
+              <p className="notice notice--warn pay__note">
+                This is a real prompt. Nothing in this demo has been tested with a PIN, so we cannot promise what approving it does.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="pay__lead">
+                The gateway asked its mock Daraja to send an M-Pesa prompt for <strong className="num">{formatKES(p.amount)}</strong> to{' '}
+                <strong className="num">{p.phoneDisplay}</strong>.
+              </p>
+              <p className="notice notice--info pay__note">
+                This is a demo, so no real prompt reaches your phone and no money moves. The mock Daraja answers by itself
+                {p.scenarioLabel ? (
+                  <>
+                    {' '}
+                    as you chose: <strong>{p.scenarioLabel}</strong>
+                  </>
+                ) : null}
+                . Use the Phone simulator button above to pick a different outcome for the next payment.
+              </p>
+            </>
+          )}
           {settling ? (
             <p className="notice notice--warn pay__note" role="status" data-testid="settling">
               The prompt window has closed. The gateway is settling the result and we keep checking in case a late one
-              arrives. Please do not pay again.
+              arrives. Please do not {sbx ? 'send another prompt' : 'pay again'}.
             </p>
           ) : (
             <>
@@ -276,10 +310,16 @@ export function PaymentPanel(p: PaymentPanelProps) {
           <CheckIcon size={36} />
         </Icon>
         <h2 id="pay-h" ref={headingRef} tabIndex={-1}>
-          Payment received
+          {sbx ? 'Paid (sandbox test)' : 'Payment received'}
         </h2>
         <p className="pay__lead" role="status">
-          {gw ? (
+          {sbx ? (
+            <>
+              The gateway reported this payment as succeeded (M-Pesa receipt <strong>{state.receipt}</strong>). It was a{' '}
+              <strong className="num">{formatKES(p.amount)}</strong> sandbox test charge. What a sandbox success does, including whether
+              it could debit a real wallet, has not been verified here, so check your own M-Pesa messages. Opening your receipt…
+            </>
+          ) : gw ? (
             <>
               Thank you. The gateway confirmed <strong className="num">{formatKES(p.amount)}</strong> (M-Pesa receipt{' '}
               <strong>{state.receipt}</strong>, a synthetic receipt from the mock Daraja). Opening your receipt…
@@ -291,18 +331,28 @@ export function PaymentPanel(p: PaymentPanelProps) {
             </>
           )}
         </p>
+        {standIn && (
+          <p className="notice notice--info pay__note" data-testid="stand-in-note">
+            {standIn}.
+          </p>
+        )}
         {gw && <InspectLink refs={p.refs} />}
       </section>
     );
   }
 
   if (state.status === 'failed') {
-    const copy = gw ? GATEWAY_FAIL_COPY[state.reason] : FAIL_COPY[state.reason];
+    const copy = sbx ? SANDBOX_FAIL_COPY[state.reason] : gw ? GATEWAY_FAIL_COPY[state.reason] : FAIL_COPY[state.reason];
     let body = copy.body;
-    if (gw && state.reason === 'declined' && state.detail) body = `Daraja reported: \u201c${state.detail}\u201d. Nothing was charged.`;
+    if (sbx && state.reason === 'declined' && state.detail) body = `Safaricom reported: \u201c${state.detail}\u201d. This payment did not go through.`;
+    else if (gw && state.reason === 'declined' && state.detail) body = `Daraja reported: \u201c${state.detail}\u201d. Nothing was charged.`;
     if (gw && state.reason === 'rejected' && state.detail) body = `${body} The gateway said: ${state.detail}`;
-    if (gw && state.reason === 'over_cap') body = `${body} This order is ${formatKES(p.amount)}; the cap is ${formatKES(p.capKes ?? 1000)}.`;
-    const offerSimulator = gw && (state.reason === 'unreachable' || state.reason === 'rate_limited' || state.reason === 'over_cap' || state.reason === 'rejected');
+    if (!sbx && gw && state.reason === 'over_cap') body = `${body} This order is ${formatKES(p.amount)}; the cap is ${formatKES(p.capKes ?? 1000)}.`;
+    const couldNotStart = state.reason === 'unreachable' || state.reason === 'rate_limited' || state.reason === 'over_cap' || state.reason === 'rejected';
+    const offerSimulator = gw && couldNotStart;
+    // A second real prompt always goes through the checkout form again, where the warning has to be acknowledged afresh.
+    const retry = sbx ? p.onChangeNumber : p.onRetry;
+    const offerMock = sbx && (couldNotStart || state.reason === 'phone_not_approved');
     return (
       <section className="panel pay" aria-labelledby="pay-h">
         <div role="alert">
@@ -314,18 +364,32 @@ export function PaymentPanel(p: PaymentPanelProps) {
           </h2>
           <p className="pay__lead">{body}</p>
         </div>
-        {gw && <InspectLink refs={p.refs} />}
+        {standIn && state.reason !== 'phone_not_approved' && !couldNotStart && (
+          <p className="notice notice--info pay__note" data-testid="stand-in-note">
+            {standIn}.
+          </p>
+        )}
+        {gw && !(sbx && (couldNotStart || state.reason === 'phone_not_approved')) && <InspectLink refs={p.refs} />}
         <p className="field__hint">Order {p.orderRef} is saved. Trying again will not create a second order.</p>
         <div className="pay__actions" ref={actionsRef}>
-          {state.reason === 'over_cap' ? null : state.reason === 'rate_limited' ? (
-            <RetryButton seconds={state.retryAfterSec ?? 30} onClick={p.onRetry} />
+          {state.reason === 'over_cap' || state.reason === 'phone_not_approved' ? null : state.reason === 'rate_limited' ? (
+            <RetryButton seconds={state.retryAfterSec ?? 30} onClick={retry} label={sbx ? 'Back to checkout' : 'Try again'} />
           ) : (
-            <button type="button" className="btn btn--primary" onClick={p.onRetry}>
-              Try again
+            <button type="button" className="btn btn--primary" onClick={retry}>
+              {sbx ? 'Back to checkout to send a new prompt' : 'Try again'}
             </button>
           )}
-          {offerSimulator && (
-            <button type="button" className={`btn ${state.reason === 'over_cap' ? 'btn--primary' : ''}`} onClick={p.onUseSimulator}>
+          {offerMock && (
+            <button
+              type="button"
+              className={`btn ${state.reason === 'over_cap' || state.reason === 'phone_not_approved' ? 'btn--primary' : ''}`}
+              onClick={p.onUseMockGateway}
+            >
+              Use the mock gateway
+            </button>
+          )}
+          {(offerSimulator || offerMock) && (
+            <button type="button" className={`btn ${state.reason === 'over_cap' && !sbx ? 'btn--primary' : ''}`} onClick={p.onUseSimulator}>
               Use the in-browser simulator
             </button>
           )}
@@ -334,7 +398,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
               Check order status
             </button>
           )}
-          {state.reason !== 'over_cap' && (
+          {state.reason !== 'over_cap' && !(sbx && state.reason !== 'phone_not_approved') && (
             <button type="button" className="btn" onClick={p.onChangeNumber}>
               Use a different number
             </button>
@@ -375,6 +439,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
           Your order is saved but <strong>not marked as paid</strong>. The payment may still complete, so please do not pay again
           yet. In this demo nobody clears held payments, so it stays held. Your order is under Orders, where &ldquo;Check payment
           status&rdquo; asks the gateway again.
+          {sbx && ' This prompt was real, so your own M-Pesa messages are the place to see what actually happened.'}
         </p>
         <InspectLink refs={p.refs} />
         <div role="status" className="pay__lead" style={{ margin: '0.75rem auto' }}>

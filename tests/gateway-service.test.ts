@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGatewayClient, GatewayError, type GatewayClient, type GatewayPayment } from '../src/gateway/client';
 import { createGatewayService, failReason, GATEWAY_BACKOFF_MS, GATEWAY_WINDOW_MS, isGatewayId, LATE_WATCH_MS, toLookupResult, toStatusResult } from '../src/gateway/service';
 import { createRoutingService } from '../src/payment/router';
-import type { PaymentService } from '../src/payment/types';
+import type { PaymentService, ProviderId } from '../src/payment/types';
 import { installFakeGateway, type FakeGateway } from './fakeGateway';
 
 const pay = (over: Partial<GatewayPayment> = {}): GatewayPayment => ({
@@ -199,12 +199,13 @@ describe('createRoutingService', () => {
     lookupPayment: vi.fn().mockResolvedValue({ state: 'not_found' }),
     pollSchedule: vi.fn().mockReturnValue(undefined),
   });
-  let sim: PaymentService, gate: PaymentService, current: 'gateway' | 'simulator', router: PaymentService;
+  let sim: PaymentService, gate: PaymentService, sbx: PaymentService, current: ProviderId, router: PaymentService;
   beforeEach(() => {
     sim = fake('sim');
     gate = fake('gate');
+    sbx = fake('sbx');
     current = 'gateway';
-    router = createRoutingService({ simulator: sim, gateway: gate, current: () => current });
+    router = createRoutingService({ simulator: sim, gateway: gate, sandbox: sbx, current: () => current });
   });
   const base = { orderRef: 'o', idempotencyKey: 'k', msisdn: '254700000001', amount: 1 };
 

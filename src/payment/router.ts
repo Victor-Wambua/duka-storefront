@@ -1,8 +1,8 @@
-import { isGatewayId } from '../gateway/service';
+import { providerOfId } from '../gateway/service';
 import type { PaymentService, ProviderId } from './types';
 
 /**
- * One PaymentService in front of both backends. A new payment goes to the provider
+ * One PaymentService in front of all three backends. A new payment goes to the provider
  * the shopper picked; everything about an existing payment goes to whichever backend
  * created it, which its id tells us. That is what lets a reload mid-payment, or a
  * switch of provider on the next attempt, never cross the wires.
@@ -10,10 +10,12 @@ import type { PaymentService, ProviderId } from './types';
 export function createRoutingService(parts: {
   simulator: PaymentService;
   gateway: PaymentService;
+  sandbox: PaymentService;
   current: () => ProviderId;
 }): PaymentService {
-  const byId = (id: string) => (isGatewayId(id) ? parts.gateway : parts.simulator);
-  const byProvider = (p: ProviderId | undefined) => ((p ?? parts.current()) === 'gateway' ? parts.gateway : parts.simulator);
+  const pick = (p: ProviderId) => (p === 'sandbox' ? parts.sandbox : p === 'gateway' ? parts.gateway : parts.simulator);
+  const byId = (id: string) => pick(providerOfId(id));
+  const byProvider = (p: ProviderId | undefined) => pick(p ?? parts.current());
   return {
     initiateStkPush: (req) => byProvider(req.provider).initiateStkPush(req),
     queryStatus: (id) => byId(id).queryStatus(id),

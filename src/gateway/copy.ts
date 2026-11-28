@@ -42,6 +42,58 @@ export const GATEWAY_FAIL_COPY: Record<FailReason, { title: string; body: string
     title: 'The gateway rejected the request',
     body: 'The gateway did not accept the details sent, so no payment was created and nothing was charged.',
   },
+  phone_not_approved: {
+    title: 'This number is not approved',
+    body: 'The gateway only accepts approved phone numbers, and this one is not on its list, so no payment was created.',
+  },
+};
+
+/**
+ * The same endings for the Safaricom sandbox, where the Daraja side is real. It never says "mock", and it
+ * does not promise more than we have seen: a cancelled prompt (1032) and a prompt nobody answered (1037)
+ * are real results we have observed; a completed PIN payment has never been observed.
+ */
+export const SANDBOX_FAIL_COPY: Record<FailReason, { title: string; body: string }> = {
+  cancelled: {
+    title: 'Prompt cancelled',
+    body: 'Safaricom reported that the prompt was cancelled on the phone (result code 1032), so this payment did not go through. You can send a new prompt when you are ready.',
+  },
+  timeout: {
+    title: 'No response in time',
+    body: 'Safaricom reported no response to the prompt (result code 1037), so this payment did not go through. Keep your phone nearby and send a new prompt if you want to try again.',
+  },
+  wrong_pin: {
+    title: 'M-Pesa did not accept the PIN',
+    body: 'Safaricom reported that the PIN was not accepted, so this payment did not go through. Be careful: several wrong PINs in a row can lock M-Pesa on your SIM.',
+  },
+  insufficient_funds: {
+    title: 'Not enough M-Pesa balance',
+    body: 'Safaricom reported that the balance was too low for the KES 1 test charge, so this payment did not go through.',
+  },
+  declined: {
+    title: 'The payment failed',
+    body: 'Safaricom reported a failure, so this payment did not go through.',
+  },
+  unreachable: {
+    title: 'We could not reach the Safaricom sandbox gateway',
+    body: 'The request did not go through, so no payment was created and no prompt was sent. Check your connection and try again, or use the mock gateway, the in-browser simulator or pay on delivery.',
+  },
+  rate_limited: {
+    title: 'The sandbox gateway is rate limiting this demo',
+    body: 'Too many payments were started from this connection or this number in a short time, so no prompt was sent. Wait for the countdown and try again, or use the mock gateway, the in-browser simulator or pay on delivery.',
+  },
+  over_cap: {
+    title: 'Over the sandbox payment limit',
+    body: 'The sandbox gateway refused the test charge as over its limit for the public demo key, so no prompt was sent. Use the mock gateway, the in-browser simulator or pay on delivery.',
+  },
+  rejected: {
+    title: 'The gateway rejected the request',
+    body: 'The sandbox gateway did not accept the details sent, so no payment was created and no prompt was sent.',
+  },
+  phone_not_approved: {
+    title: 'This sandbox only accepts approved numbers',
+    body: 'The Safaricom sandbox on this site is restricted to phone numbers its owner has approved, and the number you entered is not one of them, so no prompt was sent. The mock gateway accepts any number and never sends a real prompt: use that instead.',
+  },
 };
 
 /** Gateway flags -> a sentence a shopper can follow. */

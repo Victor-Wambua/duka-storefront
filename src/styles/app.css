@@ -652,3 +652,28 @@ td.num, th.num { text-align: right; }
   .btn--primary { forced-color-adjust: none; }
   .tab[aria-pressed='true'] { border-bottom-color: Highlight; }
 }
+
+/* Shown when a newer build has been installed in the background (see src/lib/swUpdate.ts). */
+.sw-update {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  background: var(--info-bg);
+  color: var(--text);
+  border-bottom: 1px solid var(--border-strong);
+}
+.sw-update p { flex: 1 1 14rem; margin: 0; }
+.sw-update button {
+  min-height: 44px;
+  padding: 0 var(--s-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-1);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sw-update .sw-update-reload { border-color: var(--brand); background: var(--brand); color: var(--brand-contrast); }

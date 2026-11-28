@@ -200,7 +200,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
                 </p>
               )}
               <p className="notice notice--warn pay__note">
-                This is a real prompt. Nothing in this demo has been tested with a PIN, so we cannot promise what approving it does.
+                This is a real prompt. One KES 1 payment has been completed with a PIN here, which is a small sample, and we have not checked whether approving a sandbox prompt debits a real wallet.
               </p>
             </>
           ) : (
@@ -316,8 +316,8 @@ export function PaymentPanel(p: PaymentPanelProps) {
           {sbx ? (
             <>
               The gateway reported this payment as succeeded (M-Pesa receipt <strong>{state.receipt}</strong>). It was a{' '}
-              <strong className="num">{formatKES(p.amount)}</strong> sandbox test charge. What a sandbox success does, including whether
-              it could debit a real wallet, has not been verified here, so check your own M-Pesa messages. Opening your receipt…
+              <strong className="num">{formatKES(p.amount)}</strong> sandbox test charge. We have not checked whether a sandbox success
+              debits a real wallet, so check your own M-Pesa messages. Opening your receipt…
             </>
           ) : gw ? (
             <>

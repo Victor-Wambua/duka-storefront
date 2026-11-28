@@ -106,8 +106,8 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
             <div className="field sim__scenario" data-testid="sandbox-no-scenario">
               <p className="field__hint">
                 Safaricom&rsquo;s real Daraja sandbox decides how each prompt ends, so there is no outcome to pick here and nothing in this
-                panel can change it. You answer on your own phone. A cancelled prompt and a prompt nobody answers are real results seen so
-                far; a payment completed with a PIN has not been tried. Every sandbox payment is a flat KES 1 test charge.
+                panel can change it. You answer on your own phone. A cancelled prompt, a prompt nobody answers and one KES 1 payment completed
+                with a PIN are the real results seen so far; whether a success debits a real wallet has not been checked. Every sandbox payment is a flat KES 1 test charge.
               </p>
             </div>
           ) : (

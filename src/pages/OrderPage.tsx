@@ -252,8 +252,8 @@ export default function OrderPage() {
             <>
               This is a demonstration receipt. The shop and items are invented and nothing will be delivered. The payment went
               through Safaricom&rsquo;s Daraja sandbox, which is not simulated, and only a flat KES 1 test charge was sent, never the
-              order total. What a sandbox success does, including whether it could debit a real wallet, has not been verified, so
-              check your own M-Pesa messages.
+              order total. We have not checked whether a sandbox success debits a real wallet, so check your own M-Pesa
+              messages.
             </>
           ) : viaGateway ? (
             <>

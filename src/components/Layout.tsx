@@ -111,8 +111,8 @@ export function Layout() {
               <p>
                 A demo shop front-end. The shop, products and prices are made up and nothing will be delivered. You chose
                 Safaricom&rsquo;s Daraja sandbox, which is not simulated: it sends a real M-Pesa prompt to the number you enter,
-                for a flat KES 1 test charge. Nothing in this demo has been tested with a PIN, so what approving it does is not
-                verified. The mock-Daraja gateway and the in-browser simulator are the two choices that send no real prompt.
+                for a flat KES 1 test charge. One KES 1 payment has been completed with a PIN here, a small sample, and whether
+                approving a sandbox prompt debits a real wallet has not been checked. The mock-Daraja gateway and the in-browser simulator are the two choices that send no real prompt.
               </p>
             ) : (
               <p>

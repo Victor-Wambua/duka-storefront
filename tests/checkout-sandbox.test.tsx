@@ -6,7 +6,7 @@ import { installFakeGateway, type FakeGateway, type SandboxOutcome } from './fak
 import { fakeUser, renderApp, resetWorld, seedCart } from './helpers';
 
 // The Safaricom sandbox host is stubbed over fetch: these tests never reach it. The cancelled and
-// no-response timelines are the ones the real sandbox showed; a success is a stand-in (never observed).
+// no-response timelines are the ones the real sandbox showed; a success is a stand-in for the one real payment the owner completed (a small sample).
 
 type User = ReturnType<typeof fakeUser>;
 const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
@@ -159,7 +159,7 @@ describe('safaricom sandbox: real gateway states', () => {
 
     await advance(4000);
     expect(await screen.findByRole('heading', { name: 'Paid (sandbox test)' })).toBeInTheDocument();
-    expect(screen.getByText(/has not been verified here/)).toBeInTheDocument();
+    expect(screen.getByText(/not checked whether a sandbox success debits a real wallet/)).toBeInTheDocument();
     await advance(1600);
     expect(await screen.findByRole('heading', { level: 1, name: /your order is in/ })).toBeInTheDocument();
     expect(screen.getByText('Paid (sandbox test)', { selector: '.status-badge' })).toBeInTheDocument();

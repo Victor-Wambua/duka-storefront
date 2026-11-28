@@ -581,7 +581,7 @@ export default function CheckoutPage() {
               )}
               <p className="sample-note" style={{ marginTop: 'var(--s-3)', marginBottom: 0 }}>
                 {usingSandbox
-                  ? 'Demo shop: the goods are invented and nothing will be delivered. The sandbox sends a real prompt for a KES 1 test charge, and what approving it does has not been verified.'
+                  ? 'Demo shop: the goods are invented and nothing will be delivered. The sandbox sends a real prompt for a KES 1 test charge, and we have not checked whether approving it debits a real wallet.'
                   : 'Demo only: no money moves, whichever option you choose.'}
               </p>
             </section>

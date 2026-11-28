@@ -6,7 +6,7 @@ import { installFakeGateway, type FakeGateway, type SandboxOutcome } from './fak
 import { fakeUser, renderApp, resetWorld, seedCart } from './helpers';
 
 // The Safaricom sandbox host is stubbed over fetch: these tests never reach it. The cancelled and
-// no-response timelines are the ones the real sandbox showed; a success is a stand-in for the one real payment the owner completed (a small sample).
+// no-response timelines are the ones the real sandbox showed; a success is a stand-in for the two real payments the owner completed (a small sample).
 
 type User = ReturnType<typeof fakeUser>;
 const advance = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));

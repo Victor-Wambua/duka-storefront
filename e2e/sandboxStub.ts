@@ -5,7 +5,7 @@ import { SANDBOX } from './fixtures';
  * The Safaricom sandbox gateway's HTTP API, stubbed with page.route (this suite never reaches the real one,
  * which would send a real prompt). Same contract as the mock instance, except: mode 'sandbox', no scenarios,
  * and a `scenario` field is refused. The cancelled (1032) and no-response (1037) endings are ones the real
- * sandbox produced; a success is a stand-in (one real payment has been completed with a PIN, a small sample; its effect on a wallet is unchecked).
+ * sandbox produced; a success is a stand-in (two real payments have been completed with a PIN, a small sample; its effect on a wallet is unchecked).
  */
 export type SandboxEnding = 'success' | 'cancelled_1032' | 'no_response_1037' | 'phone_not_approved' | 'pending';
 

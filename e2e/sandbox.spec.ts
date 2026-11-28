@@ -10,7 +10,7 @@ import { addMaizeFlourAndOpenCheckout, fillCheckout, openSimulator, readLocal } 
 type Order = { ref: string; status: string; pricing: { total: number }; payment: { provider?: string; receipt: string | null; chargedKes?: number } };
 
 const WARNING =
-  'This sends a real prompt to the phone number you enter. Use only your own number. One KES 1 payment has been completed with a PIN here, which is a small sample, and we have not checked whether approving a sandbox prompt debits a real wallet. Safaricom sandbox, KES 1 test charge.';
+  'This sends a real prompt to the phone number you enter. Use only your own number. Two KES 1 payments have been completed with a PIN here, which is a small sample, and we have not checked whether approving a sandbox prompt debits a real wallet. Safaricom sandbox, KES 1 test charge.';
 const payButton = (page: Page) => page.getByRole('button', { name: /Send a KES.1 test prompt with M-Pesa/ });
 const ack = (page: Page) => page.getByRole('checkbox', { name: /I understand/ });
 

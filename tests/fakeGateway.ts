@@ -65,7 +65,7 @@ function statusAt(scenario: string, t: number): { status: GatewayStatus; code?: 
 
 /**
  * How a stubbed SANDBOX payment ends. The cancelled (1032, ~8 s) and no-response (1037, ~26 s) timelines are what
- * the real Daraja sandbox was seen to do. A success is a stand-in for the one real payment the owner completed (ResultCode 0 after about 9 s, a small sample).
+ * the real Daraja sandbox was seen to do. A success is a stand-in for the two real payments the owner completed (ResultCode 0, a small sample).
  */
 export type SandboxOutcome = 'success' | 'cancelled' | 'no_response' | 'pending' | 'phone_not_approved';
 

@@ -51,7 +51,7 @@ export const GATEWAY_FAIL_COPY: Record<FailReason, { title: string; body: string
 /**
  * The same endings for the Safaricom sandbox, where the Daraja side is real. It never says "mock", and it
  * does not promise more than we have seen: a cancelled prompt (1032) and a prompt nobody answered (1037)
- * are real results we have observed, as is one completed KES 1 payment (a small sample).
+ * are real results we have observed, as are two completed KES 1 payments (a small sample).
  */
 export const SANDBOX_FAIL_COPY: Record<FailReason, { title: string; body: string }> = {
   cancelled: {

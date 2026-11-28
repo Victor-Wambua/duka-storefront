@@ -200,7 +200,7 @@ export function PaymentPanel(p: PaymentPanelProps) {
                 </p>
               )}
               <p className="notice notice--warn pay__note">
-                This is a real prompt. One KES 1 payment has been completed with a PIN here, which is a small sample, and we have not checked whether approving a sandbox prompt debits a real wallet.
+                This is a real prompt. Two KES 1 payments have been completed with a PIN here, which is a small sample, and we have not checked whether approving a sandbox prompt debits a real wallet.
               </p>
             </>
           ) : (

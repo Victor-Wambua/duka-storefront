@@ -2,24 +2,33 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { DeliveryPicker, PromoField, TotalsList } from '../components/CartControls';
 import { PageTitle } from '../components/PageTitle';
-import { PaymentPanel } from '../components/PaymentPanel';
+import { PaymentPanel, type GatewayRefs } from '../components/PaymentPanel';
+import { ProviderSwitch } from '../components/ProviderSwitch';
 import { abandonOrder, finalizeCod, finalizePaid } from '../checkout/finalize';
 import { validateCheckout, type CheckoutErrors, type CheckoutValues } from '../checkout/validate';
+import { newIdempotencyKey } from '../gateway/idempotency';
+import { scenarioInfo } from '../gateway/scenarios';
+import { isGatewayId } from '../gateway/service';
+import { useGatewayStatus } from '../hooks/useGatewayStatus';
 import { useOnline } from '../hooks/useOnline';
 import { usePaymentController } from '../hooks/usePaymentController';
 import { formatKES } from '../lib/money';
 import { normalisePhone } from '../lib/phone';
 import { mockMpesa } from '../mock/mpesaMock';
+import { paymentService } from '../payment/instance';
+import type { PayParams } from '../payment/controller';
+import type { ProviderId } from '../payment/types';
 import { useCart } from '../state/CartContext';
 import {
   fingerprintOf,
   newOrderRef,
   recordAttempt,
+  setUnderReview,
   upsertPending,
   type CheckoutSession,
   type Order,
 } from '../state/orders';
-import { ordersStore, sessionStore, useStore } from '../state/stores';
+import { ordersStore, providerStore, sessionStore, useStore } from '../state/stores';
 import type { CartView } from '../state/cartView';
 
 const MIN_FORM: CheckoutValues = { name: '', phone: '', address: '', method: 'mpesa' };
@@ -57,6 +66,7 @@ export default function CheckoutPage() {
   const online = useOnline();
   const session = useStore(sessionStore);
   const orders = useStore(ordersStore);
+  const prefs = useStore(providerStore);
   const uid = useId();
 
   const [form, setForm] = useState<CheckoutValues>(MIN_FORM);
@@ -64,16 +74,30 @@ export default function CheckoutPage() {
   const [submitted, setSubmitted] = useState(false);
   const [restored, setRestored] = useState(false);
   const paidRef = useRef<string | null>(null);
+  /** which backend the payment on screen is going through (set when a payment starts or is resumed) */
+  const [activeProvider, setActiveProvider] = useState<ProviderId>(() => providerStore.get().choice);
+  const [refs, setRefs] = useState<GatewayRefs | null>(null);
+  const [scenarioLabel, setScenarioLabel] = useState<string | null>(null);
 
   const { state, controller } = usePaymentController(
     {
-      service: mockMpesa,
+      service: paymentService,
       windowMs: () => mockMpesa.sim.get().windowSec * 1000,
-      onAttempt: ({ attempt, checkoutRequestId }) => {
+      onAttempt: ({ attempt, checkoutRequestId, darajaCheckoutId }) => {
         const s = sessionStore.get();
         if (!s) return;
-        sessionStore.set({ ...s, attempt, checkoutRequestId, requestedAt: Date.now() });
-        ordersStore.set((o) => recordAttempt(o, s.orderRef, attempt, checkoutRequestId));
+        const provider: ProviderId = isGatewayId(checkoutRequestId) ? 'gateway' : 'simulator';
+        sessionStore.set({
+          ...s,
+          attempt,
+          checkoutRequestId,
+          requestedAt: Date.now(),
+          provider,
+          darajaCheckoutId: darajaCheckoutId ?? null,
+          pendingKey: null, // the request got an answer: the next attempt is a new one with a new key
+        });
+        ordersStore.set((o) => recordAttempt(o, s.orderRef, attempt, checkoutRequestId, { provider, darajaCheckoutId: darajaCheckoutId ?? null }));
+        setRefs(provider === 'gateway' ? { paymentId: checkoutRequestId, darajaCheckoutId: darajaCheckoutId ?? null } : null);
       },
     },
     (c) => {
@@ -81,7 +105,14 @@ export default function CheckoutPage() {
       const s = sessionStore.get();
       const order = s ? ordersStore.get().find((o) => o.ref === s.orderRef) : undefined;
       if (s && order && order.status === 'pending_payment' && s.checkoutRequestId && s.requestedAt) {
+        const provider: ProviderId = s.provider ?? 'simulator';
+        setActiveProvider(provider);
+        setRefs(provider === 'gateway' ? { paymentId: s.checkoutRequestId, darajaCheckoutId: s.darajaCheckoutId ?? null } : null);
         c.resume({ attempt: s.attempt, orderRef: s.orderRef, checkoutRequestId: s.checkoutRequestId, startedAt: s.requestedAt });
+        // Past the wait window already: ask the gateway what happened rather than make the visitor click.
+        if (provider === 'gateway' && c.getState().status === 'expired') {
+          void c.checkStatus({ orderRef: s.orderRef, msisdn: order.customer.msisdn, provider, amount: order.pricing.total });
+        }
         setRestored(true);
         setForm((f) => ({
           ...f,
@@ -125,6 +156,22 @@ export default function CheckoutPage() {
   const amount = order?.pricing.total ?? view.pricing.total;
   const phoneDisplay = phone.ok ? phone.display : form.phone;
 
+  // The live gateway: reachable, under the demo key's cap? Probed only while it is the chosen provider.
+  const usingGateway = form.method === 'mpesa' && prefs.choice === 'gateway';
+  const gw = useGatewayStatus(usingGateway, online);
+  const overCap = usingGateway && view.pricing.total > gw.capKes;
+  const gatewayDown = usingGateway && online && (gw.state === 'unreachable' || gw.state === 'rate_limited');
+  const payBlocked = usingGateway && (!online || gatewayDown || overCap);
+
+  // A payment held for review is not paid: remember that on the order so the Orders pages say so.
+  useEffect(() => {
+    if (state.status !== 'review') return;
+    const ref = sessionStore.get()?.orderRef;
+    if (ref) ordersStore.set((o) => setUnderReview(o, ref, true));
+  }, [state.status]);
+
+  const chooseProvider = (choice: ProviderId) => providerStore.set((p) => ({ ...p, choice }));
+
   function set<K extends keyof CheckoutValues>(k: K, v: CheckoutValues[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
@@ -149,12 +196,29 @@ export default function CheckoutPage() {
     sessionStore.set(s);
     ordersStore.set((o) => upsertPending(o, buildOrder(s.orderRef, view, form, msisdn)));
     const live = ordersStore.get().find((o) => o.ref === s.orderRef)!;
-    await c.pay({ orderRef: s.orderRef, attempt: s.attempt + 1, msisdn, amount: live.pricing.total });
+    const provider = providerStore.get().choice;
+    setActiveProvider(provider);
+    setRefs(null);
+    const params: PayParams = { orderRef: s.orderRef, attempt: s.attempt + 1, msisdn, amount: live.pricing.total, provider };
+    if (provider === 'gateway') {
+      const scenario = providerStore.get().scenario;
+      setScenarioLabel(scenarioInfo(scenario)?.label ?? null);
+      // One Idempotency-Key per attempt, saved before the request goes out. A double click or a reload
+      // that sends the same request again gets the same payment back instead of a second one. A new
+      // key is made only when the request body changed or the last attempt got an answer.
+      const bodySig = `${msisdn}|${live.pricing.total}|${scenario}`;
+      const kept = s.pendingKey && s.pendingKey.bodySig === bodySig ? s.pendingKey.key : null;
+      const key = kept ?? newIdempotencyKey();
+      sessionStore.set({ ...s, pendingKey: { key, bodySig } });
+      params.scenario = scenario;
+      params.idempotencyKey = key;
+    }
+    await c.pay(params);
   }
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (busy || !online) return;
+    if (busy || (form.method === 'mpesa' && payBlocked)) return;
     setSubmitted(true);
     if (Object.keys(errors).length > 0 || !phone.ok || !area || view.lines.length === 0) {
       // Put focus on the first field that needs fixing; its message sits right under it.
@@ -189,7 +253,17 @@ export default function CheckoutPage() {
   function checkStatus() {
     const ref = sessionStore.get()?.orderRef;
     if (!ref || !phone.ok) return;
-    void controller.current?.checkStatus({ orderRef: ref, msisdn: phone.msisdn });
+    void controller.current?.checkStatus({ orderRef: ref, msisdn: phone.msisdn, provider: activeProvider, amount });
+  }
+
+  function useSimulatorInstead() {
+    chooseProvider('simulator');
+    controller.current?.reset();
+  }
+
+  function viewOrder() {
+    const ref = sessionStore.get()?.orderRef;
+    if (ref) navigate(`/order/${ref}`);
   }
 
   const emptyCart = view.lines.length === 0;
@@ -221,14 +295,21 @@ export default function CheckoutPage() {
       <PageTitle title="Checkout">Checkout</PageTitle>
       <div className="checkout">
         <div>
-          {!online && showForm && (
+          {!online && showForm && usingGateway && (
             <p className="notice notice--warn" role="status">
-              Checkout needs a connection to reach M-Pesa. Your cart is saved: reconnect and come back to this page.
+              Checkout needs a connection to reach the live payment gateway. Your cart is saved: reconnect, or switch to the
+              in-browser simulator or pay on delivery, both of which work offline.
             </p>
           )}
 
           <PaymentPanel
             state={state}
+            provider={activeProvider}
+            scenarioLabel={scenarioLabel}
+            refs={refs}
+            capKes={gw.capKes}
+            onUseSimulator={useSimulatorInstead}
+            onViewOrder={viewOrder}
             phoneDisplay={phoneDisplay}
             amount={amount}
             orderRef={session?.orderRef ?? null}
@@ -344,7 +425,11 @@ export default function CheckoutPage() {
                   <input type="radio" name="method" checked={form.method === 'mpesa'} onChange={() => set('method', 'mpesa')} />
                   <span>
                     <strong>M-Pesa</strong>
-                    <small>We send a prompt to your phone. Enter your PIN to pay. (Simulated in this demo.)</small>
+                    <small>
+                      {prefs.choice === 'gateway'
+                        ? 'A live sandbox gateway creates the payment and a mock Daraja answers it. No real prompt is sent to your phone.'
+                        : 'A prompt appears on a simulated phone. It runs in this browser and nothing is sent anywhere.'}
+                    </small>
                   </span>
                 </label>
                 <label className="radio-card">
@@ -355,12 +440,58 @@ export default function CheckoutPage() {
                   </span>
                 </label>
               </fieldset>
-              <button type="submit" className="btn btn--primary btn--block" disabled={!online || busy}>
+              {form.method === 'mpesa' && (
+                <>
+                  <ProviderSwitch value={prefs.choice} onChange={chooseProvider} disabled={busy} />
+                  {usingGateway && online && (gatewayDown || overCap) && (
+                    <div className="notice notice--warn provider-notice" role="status" data-testid="gateway-issue">
+                      {overCap ? (
+                        <p>
+                          This order is <strong>{formatKES(view.pricing.total)}</strong>, over the <strong>{formatKES(gw.capKes)}</strong>{' '}
+                          limit of the live gateway&rsquo;s public demo key. Use the in-browser simulator or pay on delivery.
+                        </p>
+                      ) : gw.state === 'rate_limited' ? (
+                        <p>
+                          The live gateway is rate limiting this demo
+                          {gw.retryAfterSec ? `. Try again in about ${gw.retryAfterSec} seconds` : ''}. Nothing was charged. You can use
+                          the in-browser simulator or pay on delivery meanwhile.
+                        </p>
+                      ) : (
+                        <p>
+                          The live payment gateway is not reachable right now, so a payment cannot be started. Nothing was charged. Use
+                          the in-browser simulator or pay on delivery, or check again.
+                        </p>
+                      )}
+                      <div className="provider-notice__actions">
+                        <button type="button" className="btn btn--sm" onClick={() => chooseProvider('simulator')}>
+                          Use the in-browser simulator
+                        </button>
+                        <button type="button" className="btn btn--sm" onClick={() => set('method', 'cod')}>
+                          {area?.kind === 'pickup' ? 'Pay at pickup instead' : 'Pay on delivery instead'}
+                        </button>
+                        {!overCap && (
+                          <button type="button" className="btn btn--sm" onClick={gw.recheck}>
+                            Check again
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {usingGateway && !overCap && !gatewayDown && online && (
+                    <p className="field__hint">
+                      The live gateway receives your phone number to create the payment and returns it masked. In its mock mode it never
+                      sends a real prompt, so a made-up number like 0700 000 001 works. Pick the outcome with the Phone simulator button
+                      in the yellow bar.
+                    </p>
+                  )}
+                </>
+              )}
+              <button type="submit" className="btn btn--primary btn--block" disabled={busy || (form.method === 'mpesa' && payBlocked)}>
                 {payLabel}
               </button>
-              {!online && (
+              {!online && usingGateway && (
                 <p className="field__hint" style={{ marginTop: 'var(--s-2)' }}>
-                  Offline: reconnect to pay.
+                  Offline: reconnect to pay through the gateway.
                 </p>
               )}
               <p className="sample-note" style={{ marginTop: 'var(--s-3)', marginBottom: 0 }}>

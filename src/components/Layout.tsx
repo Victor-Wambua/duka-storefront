@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from 
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useOnline } from '../hooks/useOnline';
 import { useCart } from '../state/CartContext';
+import { providerStore, useStore } from '../state/stores';
 import { CartDrawer } from './CartDrawer';
 import { CartIcon } from './Icons';
 import { Logo } from './Logo';
@@ -12,6 +13,7 @@ const PhoneSimulator = lazy(() => import('../mock/PhoneSimulator'));
 export function Layout() {
   const online = useOnline();
   const { view, openCart } = useCart();
+  const provider = useStore(providerStore).choice;
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   const [simOpen, setSimOpen] = useState(false);
@@ -42,7 +44,10 @@ export function Layout() {
       </a>
       <div className="demo-banner no-print">
         <p>
-          <strong>Demo shop.</strong> Products, stock and payments are simulated. No money moves.
+          <strong>Demo shop.</strong>{' '}
+          {provider === 'gateway'
+            ? 'Products and stock are invented. M-Pesa payments go to a live sandbox gateway that runs a mock Daraja: no real prompt is sent and no money moves.'
+            : 'Products, stock and payments are simulated in your browser. No money moves.'}
         </p>
         <button
           ref={simToggle}
@@ -58,7 +63,8 @@ export function Layout() {
       </div>
       {!online && (
         <div className="offline-banner no-print" role="status">
-          You are offline. You can still browse and fill your cart. Checkout needs a connection.
+          You are offline. You can still browse and fill your cart. Checkout needs a connection to reach the live gateway; the
+          in-browser simulator and pay on delivery still work.
         </div>
       )}
       <header className="site-header">
@@ -100,8 +106,9 @@ export function Layout() {
           <section aria-labelledby="f-about">
             <h2 id="f-about">Mama Lucy&rsquo;s (fictional)</h2>
             <p>
-              A demo shop front-end. The shop, products and prices are made up; the payment flow is a faithful
-              rehearsal of M-Pesa STK push, run against an in-browser mock.
+              A demo shop front-end. The shop, products and prices are made up. Payments go through a live sandbox
+              payments gateway that runs a mock Daraja, so the payment, its ledger and its checks are real but the M-Pesa side
+              is simulated and no money moves. An in-browser simulator is the offline fallback.
             </p>
           </section>
           <section aria-labelledby="f-help">

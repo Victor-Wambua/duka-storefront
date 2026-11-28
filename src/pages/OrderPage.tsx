@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { PageTitle } from '../components/PageTitle';
 import { PrintIcon } from '../components/Icons';
 import { finalizePaid } from '../checkout/finalize';
 import { formatKES } from '../lib/money';
 import { maskPhone } from '../lib/phone';
-import { mockMpesa } from '../mock/mpesaMock';
-import { normaliseRef, type Order } from '../state/orders';
+import { INSPECTOR_URL } from '../gateway/config';
+import { useOnline } from '../hooks/useOnline';
+import { paymentService } from '../payment/instance';
+import { normaliseRef, setUnderReview, type Order } from '../state/orders';
 import { ordersStore, useStore } from '../state/stores';
 import NotFound from './NotFound';
 
@@ -14,7 +16,7 @@ export function StatusBadge({ order }: { order: Order }) {
   const map = {
     paid: ['status-badge--paid', 'Paid'],
     pay_on_delivery: ['status-badge--cod', order.delivery.kind === 'pickup' ? 'Pay at pickup' : 'Pay on delivery'],
-    pending_payment: ['status-badge--pending', 'Awaiting payment'],
+    pending_payment: ['status-badge--pending', order.payment.underReview ? 'Payment under review' : 'Awaiting payment'],
     cancelled: ['status-badge--cancelled', 'Cancelled'],
   } as const;
   const [cls, label] = map[order.status];
@@ -27,19 +29,30 @@ export default function OrderPage() {
   const order = orders.find((o) => o.ref === normaliseRef(ref));
   const [checking, setChecking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  if (!order) return <NotFound what="order" />;
+  const online = useOnline();
+  const autoChecked = useRef<string | null>(null);
+  const viaGateway = order?.payment.provider === 'gateway';
 
   async function check(o: Order) {
     setChecking(true);
     setMessage(null);
     try {
-      const res = await mockMpesa.lookupPayment({ orderRef: o.ref, msisdn: o.customer.msisdn });
+      const res = await paymentService.lookupPayment({
+        orderRef: o.ref,
+        msisdn: o.customer.msisdn,
+        provider: o.payment.provider ?? 'simulator',
+        amount: o.pricing.total,
+      });
+      ordersStore.set((all) => setUnderReview(all, o.ref, res.state === 'review'));
       if (res.state === 'paid') {
         finalizePaid(o.ref, res.receipt, res.paidAt);
         setMessage('Payment found. Your order is now marked as paid.');
       } else if (res.state === 'pending') {
         setMessage('Still processing. Check again in a minute. Do not pay twice.');
+      } else if (res.state === 'review') {
+        setMessage('The gateway is still holding this payment for review. Your order is not marked as paid. Please do not pay again yet.');
+      } else if (res.state === 'failed') {
+        setMessage('The last payment attempt for this order did not go through, so nothing is marked as paid. You can place the order again from checkout or choose pay on delivery.');
       } else {
         setMessage('No payment found yet for this order.');
       }
@@ -49,6 +62,17 @@ export default function OrderPage() {
       setChecking(false);
     }
   }
+
+  // A gateway order that is not paid yet: ask the gateway once when the page opens.
+  useEffect(() => {
+    if (!order || order.status !== 'pending_payment' || !viaGateway || !online) return;
+    if (autoChecked.current === order.ref) return;
+    autoChecked.current = order.ref;
+    void check(order);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order?.ref, order?.status, viaGateway, online]);
+
+  if (!order) return <NotFound what="order" />;
 
   const p = order.pricing;
   const when = new Date(order.createdAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' });
@@ -63,9 +87,16 @@ export default function OrderPage() {
 
       {order.status === 'pending_payment' && (
         <div className="notice notice--warn no-print" role="status">
-          <p>
-            <strong>Payment not confirmed yet.</strong> If you approved the M-Pesa prompt, it may still be processing.
-          </p>
+          {order.payment.underReview ? (
+            <p>
+              <strong>Payment under review.</strong> The gateway is holding this payment instead of marking it paid, so this order is
+              not paid. The payment may still complete: please do not pay again yet.
+            </p>
+          ) : (
+            <p>
+              <strong>Payment not confirmed yet.</strong> If you approved the M-Pesa prompt, it may still be processing.
+            </p>
+          )}
           <button type="button" className="btn btn--sm" onClick={() => void check(order)} disabled={checking}>
             {checking ? 'Checking…' : 'Check payment status'}
           </button>
@@ -114,11 +145,38 @@ export default function OrderPage() {
           <div>
             <dt>Payment</dt>
             <dd>
-              {order.payment.method === 'mpesa' ? 'M-Pesa (simulated)' : order.delivery.kind === 'pickup' ? 'Pay at pickup' : 'Pay on delivery'}
+              {order.payment.method === 'mpesa'
+                ? viaGateway
+                  ? 'M-Pesa through the demo gateway (mock Daraja)'
+                  : 'M-Pesa (simulated)'
+                : order.delivery.kind === 'pickup'
+                  ? 'Pay at pickup'
+                  : 'Pay on delivery'}
               {order.payment.receipt && (
                 <>
                   <br />
                   Receipt <span data-testid="mpesa-receipt">{order.payment.receipt}</span>
+                </>
+              )}
+              {order.payment.method === 'mpesa' && viaGateway && order.payment.gatewayPaymentId && (
+                <>
+                  <br />
+                  <span className="receipt__gw">
+                    Gateway payment <span className="num" data-testid="gateway-payment-id">{order.payment.gatewayPaymentId}</span>
+                    {order.payment.darajaCheckoutId && (
+                      <>
+                        <br />
+                        CheckoutRequestID <span className="num" data-testid="gateway-checkout-id">{order.payment.darajaCheckoutId}</span>
+                      </>
+                    )}
+                    <span className="no-print">
+                      <br />
+                      <a href={INSPECTOR_URL} target="_blank" rel="noopener noreferrer">
+                        Inspect this payment<span className="sr-only"> (opens the gateway inspector in a new tab)</span>
+                      </a>{' '}
+                      (find it under Recent payments)
+                    </span>
+                  </span>
                 </>
               )}
             </dd>
@@ -177,8 +235,17 @@ export default function OrderPage() {
         </dl>
 
         <p className="receipt__sim">
-          This is a demonstration receipt. The shop, items and payment are simulated and no money was charged. Receipt codes
-          starting with SIM are generated by the in-browser mock.
+          {viaGateway ? (
+            <>
+              This is a demonstration receipt. The shop and items are invented. The payment went through a live sandbox gateway whose
+              Daraja side is a mock, so no money was charged. Receipt codes starting with MOCK are synthetic.
+            </>
+          ) : (
+            <>
+              This is a demonstration receipt. The shop, items and payment are simulated and no money was charged. Receipt codes
+              starting with SIM are generated by the in-browser mock.
+            </>
+          )}
         </p>
       </article>
 

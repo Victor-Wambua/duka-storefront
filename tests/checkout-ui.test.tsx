@@ -233,13 +233,25 @@ describe('M-Pesa STK push: no answer, and recovery', () => {
 });
 
 describe('offline behaviour', () => {
-  it('explains that checkout needs a connection and disables paying', async () => {
+  it('with the live gateway: explains that checkout needs a connection and disables paying', async () => {
+    resetWorld({}, 'gateway');
+    seedCart();
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     await openCheckout();
     act(() => void window.dispatchEvent(new Event('offline')));
     expect(screen.getAllByText(/offline/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Checkout needs a connection/).length).toBeGreaterThan(1); // banner + inline notice
     expect(payButton()).toBeDisabled();
+  });
+
+  it('with the in-browser simulator: offline checkout still works, because nothing leaves the browser', async () => {
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const user = fakeUser();
+    await openCheckout();
+    act(() => void window.dispatchEvent(new Event('offline')));
+    expect(payButton()).toBeEnabled();
+    await payWith(user, 'success');
+    expect(await screen.findByRole('heading', { name: 'Check your phone' })).toBeInTheDocument();
   });
 
   it('keeps the cart editable offline', async () => {

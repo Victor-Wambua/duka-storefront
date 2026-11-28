@@ -4,8 +4,8 @@ import { PageTitle } from '../components/PageTitle';
 import { finalizePaid } from '../checkout/finalize';
 import { formatKES } from '../lib/money';
 import { normalisePhone, phoneMessage } from '../lib/phone';
-import { mockMpesa } from '../mock/mpesaMock';
-import { normaliseRef } from '../state/orders';
+import { paymentService } from '../payment/instance';
+import { normaliseRef, setUnderReview } from '../state/orders';
 import { ordersStore, useStore } from '../state/stores';
 import { StatusBadge } from './OrderPage';
 
@@ -40,8 +40,14 @@ export default function OrdersPage() {
     if (found.status === 'pending_payment') {
       setBusy(true);
       try {
-        const res = await mockMpesa.lookupPayment({ orderRef: found.ref, msisdn: found.customer.msisdn });
+        const res = await paymentService.lookupPayment({
+          orderRef: found.ref,
+          msisdn: found.customer.msisdn,
+          provider: found.payment.provider ?? 'simulator',
+          amount: found.pricing.total,
+        });
         if (res.state === 'paid') finalizePaid(found.ref, res.receipt, res.paidAt);
+        else ordersStore.set((o) => setUnderReview(o, found.ref, res.state === 'review'));
       } catch {
         /* the order page offers a manual re-check */
       } finally {

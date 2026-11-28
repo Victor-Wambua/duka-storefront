@@ -1,8 +1,10 @@
 import { useEffect, useId, useRef } from 'react';
+import { ProviderSwitch } from '../components/ProviderSwitch';
+import { SCENARIOS, scenarioInfo, type ScenarioId } from '../gateway/scenarios';
 import { useNow } from '../hooks/useNow';
 import { formatKES } from '../lib/money';
 import { maskPhone } from '../lib/phone';
-import { resetDemoData, useStore } from '../state/stores';
+import { providerStore, resetDemoData, useStore } from '../state/stores';
 import { DEFAULT_SIM, mockMpesa, type Decision, type SimOutcome } from './mpesaMock';
 
 const OUTCOMES: { id: SimOutcome; label: string; hint: string }[] = [
@@ -47,6 +49,8 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
   const sim = useStore(mockMpesa.sim);
+  const prefs = useStore(providerStore);
+  const gateway = prefs.choice === 'gateway';
   useStore(mockMpesa.server);
   const now = useNow(500);
   const prompts = mockMpesa.livePrompts();
@@ -72,6 +76,33 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
             Demo controls. Pick what the customer does when the next M-Pesa prompt arrives. Settings apply to the next
             request.
           </p>
+          <ProviderSwitch value={prefs.choice} onChange={(choice) => providerStore.set((p) => ({ ...p, choice }))} legend="Process the next payment with" />
+          {gateway ? (
+            <div className="field sim__scenario">
+              <label className="field__label" htmlFor={`${id}-scenario`}>
+                What the mock Daraja does next
+              </label>
+              <select
+                id={`${id}-scenario`}
+                value={prefs.scenario}
+                onChange={(e) => providerStore.set((p) => ({ ...p, scenario: e.target.value as ScenarioId }))}
+              >
+                {SCENARIOS.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <span className="field__hint" data-testid="scenario-hint">
+                {scenarioInfo(prefs.scenario)?.hint}
+              </span>
+              <span className="field__hint">
+                The live gateway sets the timing, so there is no delay or handset here. Nothing is sent to a real phone and no money
+                moves.
+              </span>
+            </div>
+          ) : (
+          <>
           <div className="field">
             <label className="field__label" htmlFor={`${id}-outcome`}>
               What happens to the next payment
@@ -150,6 +181,8 @@ export default function PhoneSimulator({ id: panelId, onClose }: { id: string; o
               )}
             </div>
           </div>
+          </>
+          )}
 
           <button
             type="button"

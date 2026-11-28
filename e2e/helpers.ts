@@ -20,7 +20,7 @@ export async function setOutcome(page: Page, label: string, delaySec = 1) {
  * simulator; the gateway tests pass 'gateway' (and stub the gateway). Set only when nothing is saved
  * yet, so a choice the test makes later survives a reload.
  */
-export async function chooseProvider(page: Page, provider: 'simulator' | 'gateway') {
+export async function chooseProvider(page: Page, provider: 'simulator' | 'gateway' | 'sandbox') {
   await page.addInitScript((p) => {
     try {
       if (!localStorage.getItem('duka.provider')) {
@@ -38,8 +38,8 @@ export async function setScenario(page: Page, label: string) {
   await page.getByRole('button', { name: 'Phone simulator', exact: true }).click(); // close
 }
 
-export async function addMaizeFlourAndOpenCheckout(page: Page, provider: 'simulator' | 'gateway' = 'simulator') {
-  await chooseProvider(page, provider);
+export async function addMaizeFlourAndOpenCheckout(page: Page, provider: 'simulator' | 'gateway' | 'sandbox' | 'default' = 'simulator') {
+  if (provider !== 'default') await chooseProvider(page, provider);
   await page.goto('./');
   await page.getByRole('link', { name: 'Maize flour', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Maize flour' })).toBeVisible();

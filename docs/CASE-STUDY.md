@@ -19,13 +19,13 @@ Small retailers feel this as lost money and support calls: a spinner that never 
 
 **Non-goals**
 
-- A real backend, payments or inventory. The shop is fictional and the payment service is a mock.
+- A real shop backend, inventory or live payments. The shop is fictional. Payments go to a live sandbox gateway whose Daraja side is a mock (or to an in-browser simulator offline).
 - Accounts, reviews, admin screens.
 - Proving anything about the live Daraja API. The mock models the shape of the problem.
 
 ## What I built
 
-A React 19 + TypeScript (strict) + Vite shop with about 41 sample products, a cart drawer, a checkout, receipts, order history and a PWA shell. The payment code sits behind a small interface, `PaymentService`, with four calls: `initiateStkPush`, `queryStatus`, `cancel` and `lookupPayment`. An in-browser mock implements it, and a "phone simulator" overlay lets a reviewer choose what the customer does.
+A React 19 + TypeScript (strict) + Vite shop with about 41 sample products, a cart drawer, a checkout, receipts, order history and a PWA shell. The payment code sits behind a small interface, `PaymentService`, with four calls: `initiateStkPush`, `queryStatus`, `cancel` and `lookupPayment`. Two implementations sit behind it: a client for my live sandbox payments gateway ([mpesa-gateway](https://github.com/Victor-Wambua/mpesa-gateway), mock Daraja, publishable demo key), and an in-browser mock that stays as the offline fallback. A "phone simulator" overlay lets a reviewer choose what the customer does (the gateway's eight mock scenarios, or the browser simulator's outcomes).
 
 ![Waiting on the phone, with the simulator open](screenshots/04-stk-awaiting-simulator.png)
 
@@ -95,4 +95,4 @@ The callback is the source of truth in production; polling is a fallback. In the
 
 ## Status
 
-Portfolio build. It runs locally and as a static demo with sample data. The shop, products, prices, stock, delivery fees, promo codes, the M-Pesa service, the handset and the receipt codes are all simulated. No real payment has ever been made with it.
+Portfolio build. It runs locally and as a static demo with sample data. The shop, products, prices, stock, delivery fees and promo codes are simulated. Payments are created on a live sandbox gateway, but its Daraja side is a mock: the handset, the callbacks and the receipt codes (`MOCK...`, or `SIM...` from the browser simulator) are synthetic. No real payment has ever been made with it, and nothing has been run against the real Safaricom sandbox from this front-end.

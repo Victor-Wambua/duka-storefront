@@ -1,7 +1,7 @@
 {
   "name": "Duka Storefront - Mama Lucy's Provisions & Homeware",
   "short_name": "Duka",
-  "description": "A demo shop with an M-Pesa STK push checkout. Sandbox payments only: no money moves.",
+  "description": "A demo shop with an M-Pesa STK push checkout. By default payments are simulated and no money moves; an opt-in Safaricom sandbox option sends a real prompt.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

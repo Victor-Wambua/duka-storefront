@@ -19,13 +19,13 @@ Small retailers feel this as lost money and support calls: a spinner that never 
 
 **Non-goals**
 
-- A real shop backend, inventory or live payments. The shop is fictional. Payments go to a live sandbox gateway whose Daraja side is a mock (or to an in-browser simulator offline).
+- A real shop backend, inventory or live payments. The shop is fictional. By default payments go to a live sandbox gateway whose Daraja side is a mock (or to an in-browser simulator offline). An opt-in third choice sends a real prompt through Safaricom's Daraja sandbox for a flat KES 1 test charge.
 - Accounts, reviews, admin screens.
-- Proving anything about the live Daraja API. The mock models the shape of the problem.
+- Proving how the live Daraja API behaves beyond what was observed. The mock models the shape of the problem; the sandbox option has been seen to cancel and to time out, and has never been completed with a PIN.
 
 ## What I built
 
-A React 19 + TypeScript (strict) + Vite shop with about 41 sample products, a cart drawer, a checkout, receipts, order history and a PWA shell. The payment code sits behind a small interface, `PaymentService`, with four calls: `initiateStkPush`, `queryStatus`, `cancel` and `lookupPayment`. Two implementations sit behind it: a client for my live sandbox payments gateway ([mpesa-gateway](https://github.com/Victor-Wambua/mpesa-gateway), mock Daraja, publishable demo key), and an in-browser mock that stays as the offline fallback. A "phone simulator" overlay lets a reviewer choose what the customer does (the gateway's eight mock scenarios, or the browser simulator's outcomes).
+A React 19 + TypeScript (strict) + Vite shop with about 41 sample products, a cart drawer, a checkout, receipts, order history and a PWA shell. The payment code sits behind a small interface, `PaymentService`, with four calls: `initiateStkPush`, `queryStatus`, `cancel` and `lookupPayment`. Three providers sit behind it: a client for my live sandbox payments gateway ([mpesa-gateway](https://github.com/Victor-Wambua/mpesa-gateway), mock Daraja, publishable demo key), a client for a second instance of the same gateway that talks to Safaricom's real Daraja sandbox (opt-in, behind a warning and an acknowledgement, a flat KES 1 test charge), and an in-browser mock that stays as the offline fallback. A "phone simulator" overlay lets a reviewer choose what the customer does (the gateway's eight mock scenarios, or the browser simulator's outcomes); the sandbox has no picker because Safaricom decides.
 
 ![Waiting on the phone, with the simulator open](screenshots/04-stk-awaiting-simulator.png)
 
@@ -95,4 +95,4 @@ The callback is the source of truth in production; polling is a fallback. In the
 
 ## Status
 
-Portfolio build. It runs locally and as a static demo with sample data. The shop, products, prices, stock, delivery fees and promo codes are simulated. Payments are created on a live sandbox gateway, but its Daraja side is a mock: the handset, the callbacks and the receipt codes (`MOCK...`, or `SIM...` from the browser simulator) are synthetic. No real payment has ever been made with it, and nothing has been run against the real Safaricom sandbox from this front-end.
+Portfolio build. It runs locally and as a static demo with sample data. The shop, products, prices, stock, delivery fees and promo codes are simulated. By default payments are created on a live sandbox gateway whose Daraja side is a mock: the handset, the callbacks and the receipt codes (`MOCK...`, or `SIM...` from the browser simulator) are synthetic, and no money moves. The opt-in Safaricom sandbox provider is different: it is not simulated. It has sent a real prompt to the owner's own phone, and the real results seen were ResultCode 1032 (cancelled by the customer, callback after about 8 seconds) and 1037 (no response, callback after about 26 seconds, mapped to timed out). No payment has ever been completed with a PIN there, so a real sandbox success is unobserved, and what one does, including whether it could debit a real wallet, is not verified. Its success path is covered only by tests against a stubbed gateway.

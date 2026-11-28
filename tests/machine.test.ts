@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { canSubmit, initialPayment, isBusy, paymentReducer, type PaymentEvent, type PaymentState } from '../src/payment/machine';
-import type { FailReason } from '../src/payment/types';
+import type { ResultFailReason } from '../src/payment/types';
 
 const run = (events: PaymentEvent[], from: PaymentState = initialPayment) => events.reduce(paymentReducer, from);
 
@@ -25,7 +25,7 @@ describe('happy path', () => {
 });
 
 describe('every failure branch', () => {
-  const reasons: Exclude<FailReason, 'unreachable'>[] = ['cancelled', 'wrong_pin', 'insufficient_funds', 'timeout'];
+  const reasons: ResultFailReason[] = ['cancelled', 'wrong_pin', 'insufficient_funds', 'timeout'];
   it.each(reasons)('customer-side result %s -> failed(%s)', (reason) => {
     const s = paymentReducer(awaiting, { type: 'status', result: { state: 'failed', reason, resultCode: 1, resultDesc: 'x' } });
     expect(s).toEqual({ status: 'failed', reason, attempt: 1 });
@@ -151,5 +151,66 @@ describe('offline and resume', () => {
       type: 'resume', attempt: 2, idempotencyKey: 'k', checkoutRequestId: 'CR9', startedAt: 10_000, now: 90_000, windowMs: 75_000,
     });
     expect(s).toMatchObject({ status: 'expired', check: 'none' });
+  });
+});
+
+describe('live gateway endings', () => {
+  it('a Daraja failure with no dedicated copy keeps its own description', () => {
+    const s = paymentReducer(awaiting, { type: 'status', result: { state: 'failed', reason: 'declined', resultCode: 2029, resultDesc: 'Some Daraja words' } });
+    expect(s).toEqual({ status: 'failed', reason: 'declined', attempt: 1, detail: 'Some Daraja words' });
+  });
+
+  it('a review result is its own state: not paid, not failed, not busy', () => {
+    const s = paymentReducer(awaiting, { type: 'status', result: { state: 'review', flags: ['late_success'] } });
+    expect(s).toEqual({ status: 'review', attempt: 1, checkoutRequestId: 'CR1', flags: ['late_success'], check: 'none' });
+    expect(isBusy(s)).toBe(false);
+    expect(canSubmit(s)).toBe(false);
+  });
+
+  it('review: checking again reports what the gateway says and never invents success', () => {
+    const review = paymentReducer(awaiting, { type: 'status', result: { state: 'review', flags: ['late_success'] } });
+    expect(paymentReducer(review, { type: 'lookup_started' })).toMatchObject({ status: 'review', check: 'checking' });
+    expect(run([{ type: 'lookup_started' }, { type: 'lookup_result', result: { state: 'review', flags: ['late_success'] } }], review)).toMatchObject({ status: 'review', check: 'pending' });
+    expect(run([{ type: 'lookup_started' }, { type: 'lookup_result', result: { state: 'not_found' } }], review)).toMatchObject({ status: 'review', check: 'pending' });
+    expect(run([{ type: 'lookup_started' }, { type: 'lookup_failed' }], review)).toMatchObject({ status: 'review', check: 'error' });
+    expect(run([{ type: 'lookup_result', result: { state: 'paid', receipt: 'MOCKX', paidAt: 9, amount: 1 } }], review)).toEqual({ status: 'paid', receipt: 'MOCKX', paidAt: 9 });
+  });
+
+  it('review ignores stray poll results and can be reset to the form', () => {
+    const review = paymentReducer(awaiting, { type: 'status', result: { state: 'review', flags: [] } });
+    expect(paymentReducer(review, { type: 'status', result: { state: 'success', receipt: 'MOCKX', paidAt: 1, resultCode: 0 } })).toBe(review);
+    expect(paymentReducer(review, { type: 'reset' })).toEqual(initialPayment);
+  });
+
+  it('an expired request that the lookup finds under review becomes review', () => {
+    const expired = paymentReducer(awaiting, { type: 'deadline', now: 76_000 });
+    expect(run([{ type: 'lookup_started' }, { type: 'lookup_result', result: { state: 'review', flags: ['callback_query_mismatch'] } }], expired)).toMatchObject({
+      status: 'review',
+      flags: ['callback_query_mismatch'],
+      check: 'none',
+    });
+  });
+
+  it('late_watch is shown while the prompt window is closed, and cleared when the answer changes', () => {
+    const watching = paymentReducer(awaiting, { type: 'status', result: { state: 'pending', phase: 'late_watch' } });
+    expect(watching).toMatchObject({ status: 'awaiting_customer', phase: 'late_watch', polls: 1 });
+    expect(paymentReducer(watching, { type: 'status', result: { state: 'pending' } })).not.toHaveProperty('phase');
+  });
+
+  it('request failures keep their own reason, and Retry-After', () => {
+    expect(run([submit, { type: 'request_failed', reason: 'rate_limited', retryAfterSec: 42, detail: 'slow down' }])).toEqual({
+      status: 'failed',
+      reason: 'rate_limited',
+      attempt: 1,
+      detail: 'slow down',
+      retryAfterSec: 42,
+    });
+    expect(run([submit, { type: 'request_failed', reason: 'over_cap' }])).toMatchObject({ reason: 'over_cap' });
+    expect(canSubmit(run([submit, { type: 'request_failed', reason: 'over_cap' }]))).toBe(true);
+  });
+
+  it('the prompt end time rides along when the backend supplies one', () => {
+    const s = run([submit, { ...accepted, promptEndsAt: 91_000 } as PaymentEvent]);
+    expect(s).toMatchObject({ status: 'awaiting_customer', promptEndsAt: 91_000 });
   });
 });

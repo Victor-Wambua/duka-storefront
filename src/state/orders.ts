@@ -27,6 +27,14 @@ export interface Order {
     checkoutRequestId: string | null;
     receipt: string | null;
     paidAt: number | null;
+    /** which backend took the payment (absent on orders made before the gateway existed: the simulator) */
+    provider?: 'gateway' | 'simulator';
+    /** gateway payment id (pay_...), for the inspector and for polling */
+    gatewayPaymentId?: string | null;
+    /** Daraja's CheckoutRequestID as reported by the gateway */
+    darajaCheckoutId?: string | null;
+    /** the gateway is holding this payment for review: it is not paid */
+    underReview?: boolean;
   };
 }
 
@@ -59,10 +67,39 @@ export function upsertPending(orders: Order[], order: Order): Order[] {
 const update = (orders: Order[], ref: string, fn: (o: Order) => Order) =>
   orders.map((o) => (o.ref === ref ? fn(o) : o));
 
-export const recordAttempt = (orders: Order[], ref: string, attempt: number, checkoutRequestId: string | null) =>
+export const recordAttempt = (
+  orders: Order[],
+  ref: string,
+  attempt: number,
+  checkoutRequestId: string | null,
+  extra: { provider?: 'gateway' | 'simulator'; darajaCheckoutId?: string | null } = {},
+) =>
   update(orders, ref, (o) =>
     o.status === 'pending_payment'
-      ? { ...o, payment: { ...o.payment, attempts: Math.max(o.payment.attempts, attempt), checkoutRequestId } }
+      ? {
+          ...o,
+          payment: {
+            ...o.payment,
+            attempts: Math.max(o.payment.attempts, attempt),
+            checkoutRequestId,
+            underReview: false,
+            ...(extra.provider
+              ? {
+                  provider: extra.provider,
+                  gatewayPaymentId: extra.provider === 'gateway' ? checkoutRequestId : null,
+                  darajaCheckoutId: extra.darajaCheckoutId ?? null,
+                }
+              : {}),
+          },
+        }
+      : o,
+  );
+
+/** Flag (or clear) "the gateway is holding this payment for review". Never changes the order's status. */
+export const setUnderReview = (orders: Order[], ref: string, underReview: boolean) =>
+  update(orders, ref, (o) =>
+    o.status === 'pending_payment' && !!o.payment.underReview !== underReview
+      ? { ...o, payment: { ...o.payment, underReview } }
       : o,
   );
 
@@ -102,6 +139,12 @@ export interface CheckoutSession {
   attempt: number;
   checkoutRequestId: string | null;
   requestedAt: number | null;
+  /** which backend the in-flight attempt went to */
+  provider?: 'gateway' | 'simulator';
+  /** Daraja's CheckoutRequestID, when the backend gave one */
+  darajaCheckoutId?: string | null;
+  /** The Idempotency-Key of an attempt whose outcome we do not know yet (request sent, no answer seen). */
+  pendingKey?: { key: string; bodySig: string } | null;
 }
 
 export const sessionSpec: StoreSpec<CheckoutSession | null> = {

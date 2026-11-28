@@ -2,12 +2,14 @@ import { useSyncExternalStore } from 'react';
 import { createStore, type Store } from '../lib/persist';
 import { getVariant } from '../data/catalogue';
 import { cartSpec, type CartState } from './cart';
+import { providerSpec, type ProviderPrefs } from './provider';
 import { inventorySpec, ordersSpec, sessionSpec, type CheckoutSession, type Inventory, type Order } from './orders';
 
 export const cartStore = createStore<CartState>(cartSpec);
 export const ordersStore = createStore<Order[]>(ordersSpec);
 export const sessionStore = createStore<CheckoutSession | null>(sessionSpec);
 export const inventoryStore = createStore<Inventory>(inventorySpec);
+export const providerStore = createStore<ProviderPrefs>(providerSpec);
 
 export function useStore<T>(store: Store<T>): T {
   return useSyncExternalStore(store.subscribe, store.get, store.get);

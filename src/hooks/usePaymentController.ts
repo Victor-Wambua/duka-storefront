@@ -38,5 +38,13 @@ export function usePaymentController(opts: Omit<ControllerOptions, 'onChange'>, 
     ref.current?.setOnline(online);
   }, [online, state.status]);
 
+  // No polling while the page is hidden; catch up the moment it is shown again.
+  useEffect(() => {
+    const sync = () => ref.current?.setVisible(document.visibilityState !== 'hidden');
+    sync();
+    document.addEventListener('visibilitychange', sync);
+    return () => document.removeEventListener('visibilitychange', sync);
+  }, [state.status]);
+
   return { state, controller: ref };
 }

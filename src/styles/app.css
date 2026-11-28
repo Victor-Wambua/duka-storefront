@@ -677,3 +677,18 @@ td.num, th.num { text-align: right; }
   cursor: pointer;
 }
 .sw-update .sw-update-reload { border-color: var(--brand); background: var(--brand); color: var(--brand-contrast); }
+
+/* ---------- live gateway ---------- */
+.provider { margin-top: var(--s-4); }
+.provider legend { margin-bottom: var(--s-2); }
+.provider-notice { display: grid; gap: var(--s-2); }
+.provider-notice p { margin: 0; }
+.provider-notice .pay__actions, .provider-notice__actions { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); justify-content: flex-start; }
+.pay__note { max-width: 42ch; margin-inline: auto; text-align: left; }
+.pay__reasons { max-width: 42ch; margin: var(--s-2) auto 0; padding-left: var(--s-4); text-align: left; font-size: var(--fs-sm); }
+.gw-refs { max-width: 42ch; margin: var(--s-3) auto 0; text-align: left; }
+.gw-refs dl { margin: 0; display: grid; gap: var(--s-1); font-size: var(--fs-xs); }
+.gw-refs dl div { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.gw-refs dt { color: var(--text-muted); font-weight: 700; }
+.gw-refs dd { margin: 0; overflow-wrap: anywhere; white-space: normal; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.sim__scenario { margin-top: var(--s-2); }

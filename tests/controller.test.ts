@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentController, DEFAULT_BACKOFF_MS } from '../src/payment/controller';
 import { createMockMpesa, type MockMpesa, type SimOutcome } from '../src/mock/mpesaMock';
-import type { PaymentService } from '../src/payment/types';
+import { PaymentServiceError, type PaymentService } from '../src/payment/types';
 
 let mock: MockMpesa;
 let n = 0;
@@ -291,6 +291,117 @@ describe('PaymentController: offline and resume', () => {
     const c = new PaymentController({ service: mock, onAttempt });
     await c.pay(PARAMS);
     expect(onAttempt).toHaveBeenCalledWith({ attempt: 1, checkoutRequestId: expect.stringMatching(/^ws_CO_SIM_/) });
+    c.dispose();
+  });
+});
+
+describe('PaymentController: live gateway behaviour', () => {
+  const gwService = (over: Partial<PaymentService> = {}): PaymentService => ({
+    initiateStkPush: vi.fn().mockResolvedValue({ kind: 'accepted', checkoutRequestId: 'pay_1', expiresAt: 0, reused: false, windowMs: 150_000, promptEndsAt: Date.now() + 90_000 }),
+    queryStatus: vi.fn().mockResolvedValue({ state: 'pending' }),
+    cancel: vi.fn().mockResolvedValue(undefined),
+    lookupPayment: vi.fn().mockResolvedValue({ state: 'not_found' }),
+    pollSchedule: () => ({ backoffMs: [1500, 1500, 2000], windowMs: 150_000 }),
+    ...over,
+  });
+
+  it('uses the Idempotency-Key it was given, and the provider, scenario and window the backend asks for', async () => {
+    const service = gwService();
+    const c = new PaymentController({ service, windowMs: 75_000 });
+    await c.pay({ ...PARAMS, provider: 'gateway', scenario: 'wrong_pin', idempotencyKey: 'duka-key-1' });
+    expect(service.initiateStkPush).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'duka-key-1', provider: 'gateway', scenario: 'wrong_pin' }));
+    expect(c.getState()).toMatchObject({ status: 'awaiting_customer', deadline: Date.now() + 150_000, promptEndsAt: expect.any(Number) });
+    c.dispose();
+  });
+
+  it('polls at the backend\'s own pace (1.5 s first), not the simulator\'s', async () => {
+    const service = gwService();
+    const c = new PaymentController({ service });
+    await c.pay(PARAMS);
+    await tick(1499);
+    expect(service.queryStatus).not.toHaveBeenCalled();
+    await tick(2);
+    expect(service.queryStatus).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('does not poll while the page is hidden, and catches up straight away when it is shown', async () => {
+    const service = gwService();
+    const c = new PaymentController({ service });
+    await c.pay(PARAMS);
+    c.setVisible(false);
+    await tick(30_000);
+    expect(service.queryStatus).not.toHaveBeenCalled();
+    c.setVisible(true);
+    await tick(1);
+    expect(service.queryStatus).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('stops polling for good once the payment is final', async () => {
+    const service = gwService({ queryStatus: vi.fn().mockResolvedValue({ state: 'success', receipt: 'MOCKOK', paidAt: 1, resultCode: 0 }) });
+    const c = new PaymentController({ service });
+    await c.pay(PARAMS);
+    await tick(2000);
+    expect(c.getState().status).toBe('paid');
+    await tick(120_000);
+    expect(service.queryStatus).toHaveBeenCalledTimes(1);
+    c.dispose();
+  });
+
+  it('respects Retry-After on a rate-limited poll', async () => {
+    const queryStatus = vi
+      .fn()
+      .mockRejectedValueOnce(new PaymentServiceError('rate_limited', 'slow', { retryAfterSec: 20 }))
+      .mockResolvedValue({ state: 'pending' });
+    const c = new PaymentController({ service: gwService({ queryStatus }) });
+    await c.pay(PARAMS);
+    await tick(1600); // first poll, rate limited
+    expect(queryStatus).toHaveBeenCalledTimes(1);
+    await tick(19_000);
+    expect(queryStatus).toHaveBeenCalledTimes(1); // still waiting out Retry-After
+    await tick(1500);
+    expect(queryStatus).toHaveBeenCalledTimes(2);
+    c.dispose();
+  });
+
+  it('a review result ends polling, is not paid, and "check again" can still find it paid', async () => {
+    const service = gwService({
+      queryStatus: vi.fn().mockResolvedValue({ state: 'review', flags: ['late_success'] }),
+      lookupPayment: vi.fn().mockResolvedValue({ state: 'review', flags: ['late_success'] }),
+    });
+    const c = new PaymentController({ service });
+    await c.pay(PARAMS);
+    await tick(2000);
+    expect(c.getState()).toMatchObject({ status: 'review', flags: ['late_success'] });
+    await tick(60_000);
+    expect(service.queryStatus).toHaveBeenCalledTimes(1);
+    await c.checkStatus({ orderRef: PARAMS.orderRef, msisdn: PARAMS.msisdn, provider: 'gateway', amount: 1500 });
+    expect(c.getState()).toMatchObject({ status: 'review', check: 'pending' });
+    (service.lookupPayment as ReturnType<typeof vi.fn>).mockResolvedValue({ state: 'paid', receipt: 'MOCKLATE', paidAt: 5, amount: 1500 });
+    await c.checkStatus({ orderRef: PARAMS.orderRef, msisdn: PARAMS.msisdn });
+    expect(c.getState()).toMatchObject({ status: 'paid', receipt: 'MOCKLATE' });
+    c.dispose();
+  });
+
+  it.each([
+    ['rate_limited', { retryAfterSec: 33 }],
+    ['over_cap', {}],
+    ['rejected', {}],
+  ] as const)('a %s answer to the push becomes failed(%s)', async (code, extra) => {
+    const service = gwService({ initiateStkPush: () => Promise.reject(new PaymentServiceError(code, 'because', extra)) });
+    const c = new PaymentController({ service });
+    await c.pay(PARAMS);
+    expect(c.getState()).toMatchObject({ status: 'failed', reason: code, detail: 'because', ...('retryAfterSec' in extra ? extra : {}) });
+    c.dispose();
+  });
+
+  it('passes the gateway\'s CheckoutRequestID to the caller for persistence', async () => {
+    const onAttempt = vi.fn();
+    const service = gwService({ initiateStkPush: vi.fn().mockResolvedValue({ kind: 'accepted', checkoutRequestId: 'pay_1', expiresAt: 0, reused: false, darajaCheckoutId: 'ws_CO_MOCK_1' }) });
+    const c = new PaymentController({ service, onAttempt });
+    await c.pay(PARAMS);
+    expect(onAttempt).toHaveBeenCalledWith({ attempt: 1, checkoutRequestId: 'pay_1', darajaCheckoutId: 'ws_CO_MOCK_1' });
     c.dispose();
   });
 });

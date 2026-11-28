@@ -4,9 +4,10 @@ import type { FailReason, LookupResult, StatusResult } from './types';
  * The payment state machine, as a pure reducer.
  *
  *   idle -> requesting -> awaiting_customer -> paid
- *                 |              |-> failed(cancelled | wrong_pin | insufficient_funds | timeout)
+ *                 |              |-> failed(cancelled | wrong_pin | insufficient_funds | timeout | declined)
+ *                 |              |-> review   (the backend will not say paid or failed yet)
  *                 |              |-> expired  (we stopped waiting; outcome unknown)
- *                 '-> failed(unreachable)
+ *                 '-> failed(unreachable | rate_limited | over_cap | rejected)
  *
  * Time and I/O live in the controller; this file only decides what each event
  * means in each state. Events that make no sense in the current state return
@@ -29,16 +30,22 @@ export type PaymentState =
       polls: number;
       offline: boolean;
       reused: boolean;
+      /** the prompt's own end time, when it differs from the wait deadline (live gateway) */
+      promptEndsAt?: number;
+      /** set while the prompt window is over but we are still watching for a late result */
+      phase?: 'late_watch';
     }
   | { status: 'paid'; receipt: string; paidAt: number }
-  | { status: 'failed'; reason: FailReason; attempt: number; detail?: string }
-  | { status: 'expired'; attempt: number; checkoutRequestId: string; check: ExpiredCheck };
+  | { status: 'failed'; reason: FailReason; attempt: number; detail?: string; retryAfterSec?: number }
+  | { status: 'expired'; attempt: number; checkoutRequestId: string; check: ExpiredCheck }
+  /** Held for review: never treated as paid. `check` is the result of the last "check again". */
+  | { status: 'review'; attempt: number; checkoutRequestId: string; flags: string[]; check: ExpiredCheck };
 
 export type PaymentEvent =
   | { type: 'submit'; attempt: number; idempotencyKey: string }
-  | { type: 'accepted'; checkoutRequestId: string; now: number; windowMs: number; reused?: boolean }
+  | { type: 'accepted'; checkoutRequestId: string; now: number; windowMs: number; reused?: boolean; promptEndsAt?: number }
   | { type: 'already_paid'; receipt: string; paidAt: number }
-  | { type: 'request_failed'; detail?: string }
+  | { type: 'request_failed'; detail?: string; reason?: Extract<FailReason, 'unreachable' | 'rate_limited' | 'over_cap' | 'rejected'>; retryAfterSec?: number }
   | { type: 'status'; result: StatusResult }
   | { type: 'poll_failed' }
   | { type: 'deadline'; now: number }
@@ -86,6 +93,7 @@ export function paymentReducer(s: PaymentState, e: PaymentEvent): PaymentState {
         polls: 0,
         offline: false,
         reused: e.reused ?? false,
+        ...(e.promptEndsAt !== undefined ? { promptEndsAt: e.promptEndsAt } : {}),
       };
 
     case 'already_paid':
@@ -93,15 +101,29 @@ export function paymentReducer(s: PaymentState, e: PaymentEvent): PaymentState {
 
     case 'request_failed':
       return s.status === 'requesting'
-        ? { status: 'failed', reason: 'unreachable', attempt: s.attempt, ...(e.detail ? { detail: e.detail } : {}) }
+        ? {
+            status: 'failed',
+            reason: e.reason ?? 'unreachable',
+            attempt: s.attempt,
+            ...(e.detail ? { detail: e.detail } : {}),
+            ...(e.retryAfterSec !== undefined ? { retryAfterSec: e.retryAfterSec } : {}),
+          }
         : s;
 
     case 'status': {
       if (s.status !== 'awaiting_customer') return s;
       const r = e.result;
       if (r.state === 'success') return { status: 'paid', receipt: r.receipt, paidAt: r.paidAt };
-      if (r.state === 'failed') return { status: 'failed', reason: r.reason, attempt: s.attempt };
-      return { ...s, polls: s.polls + 1 };
+      if (r.state === 'failed') {
+        return { status: 'failed', reason: r.reason, attempt: s.attempt, ...(r.reason === 'declined' ? { detail: r.resultDesc } : {}) };
+      }
+      if (r.state === 'review') {
+        return { status: 'review', attempt: s.attempt, checkoutRequestId: s.checkoutRequestId, flags: r.flags, check: 'none' };
+      }
+      const next = { ...s, polls: s.polls + 1 };
+      if (r.phase) next.phase = r.phase;
+      else delete next.phase;
+      return next;
     }
 
     case 'poll_failed':
@@ -119,21 +141,27 @@ export function paymentReducer(s: PaymentState, e: PaymentEvent): PaymentState {
       return s.status === 'awaiting_customer' ? { status: 'failed', reason: 'cancelled', attempt: s.attempt } : s;
 
     case 'lookup_started':
-      return s.status === 'expired' && s.check !== 'checking' ? { ...s, check: 'checking' } : s;
+      return (s.status === 'expired' || s.status === 'review') && s.check !== 'checking' ? { ...s, check: 'checking' } : s;
 
     case 'lookup_result': {
-      if (s.status !== 'expired') return s;
+      if (s.status !== 'expired' && s.status !== 'review') return s;
       const r = e.result;
       if (r.state === 'paid') return { status: 'paid', receipt: r.receipt, paidAt: r.paidAt };
-      if (r.state === 'failed') return { status: 'failed', reason: r.reason, attempt: s.attempt };
+      if (r.state === 'failed') {
+        return { status: 'failed', reason: r.reason, attempt: s.attempt, ...(r.detail ? { detail: r.detail } : {}) };
+      }
+      if (r.state === 'review') {
+        return { status: 'review', attempt: s.attempt, checkoutRequestId: s.checkoutRequestId, flags: r.flags, check: s.status === 'review' ? 'pending' : 'none' };
+      }
+      if (s.status === 'review') return { ...s, check: 'pending' }; // still held: nothing new to report
       return { ...s, check: r.state === 'pending' ? 'pending' : 'not_found' };
     }
 
     case 'lookup_failed':
-      return s.status === 'expired' ? { ...s, check: 'error' } : s;
+      return s.status === 'expired' || s.status === 'review' ? { ...s, check: 'error' } : s;
 
     case 'reset':
-      return s.status === 'failed' || (s.status === 'expired' && s.check === 'not_found') ? initialPayment : s;
+      return s.status === 'failed' || s.status === 'review' || (s.status === 'expired' && s.check === 'not_found') ? initialPayment : s;
 
     case 'resume': {
       if (s.status !== 'idle') return s;

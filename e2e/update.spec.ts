@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 
 test('a returning visitor is told when a new version has been installed, and can reload or wait', async ({ page }) => {
   await page.goto('./');

@@ -1,5 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import { stubGateway } from './gatewayStub';
 import { addMaizeFlourAndOpenCheckout, fillCheckout } from './helpers';
 
 async function scan(page: Page, label: string) {
@@ -55,4 +57,22 @@ test('axe: the payment states (awaiting, expired) and the simulator', async ({ p
   await scan(page, 'awaiting');
   await expect(page.getByRole('heading', { name: 'We have not heard back from M-Pesa' })).toBeVisible({ timeout: 25_000 });
   await scan(page, 'expired');
+});
+
+test('axe: the live gateway states (awaiting, review) and the scenario picker', async ({ page }) => {
+  await stubGateway(page);
+  await addMaizeFlourAndOpenCheckout(page, 'gateway');
+  await fillCheckout(page);
+  await scan(page, 'checkout with provider switch');
+  const toggle = page.getByRole('button', { name: 'Phone simulator', exact: true });
+  await toggle.click();
+  const sim = page.getByRole('dialog', { name: /Phone simulator/ });
+  await sim.getByLabel('What the mock Daraja does next').selectOption({ label: 'Callback and query disagree' });
+  await scan(page, 'scenario picker');
+  await toggle.click();
+  await page.getByRole('button', { name: /Pay KES/ }).click();
+  await expect(page.getByRole('heading', { name: 'Check your phone' })).toBeVisible();
+  await scan(page, 'gateway awaiting');
+  await expect(page.getByRole('heading', { name: 'We are checking this payment' })).toBeVisible({ timeout: 15_000 });
+  await scan(page, 'gateway review');
 });

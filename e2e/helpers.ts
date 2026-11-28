@@ -15,7 +15,31 @@ export async function setOutcome(page: Page, label: string, delaySec = 1) {
   await page.getByRole('button', { name: 'Phone simulator', exact: true }).click(); // close
 }
 
-export async function addMaizeFlourAndOpenCheckout(page: Page) {
+/**
+ * Choose the payment provider before the app first loads. Existing tests run on the in-browser
+ * simulator; the gateway tests pass 'gateway' (and stub the gateway). Set only when nothing is saved
+ * yet, so a choice the test makes later survives a reload.
+ */
+export async function chooseProvider(page: Page, provider: 'simulator' | 'gateway') {
+  await page.addInitScript((p) => {
+    try {
+      if (!localStorage.getItem('duka.provider')) {
+        localStorage.setItem('duka.provider', JSON.stringify({ v: 1, data: { choice: p, scenario: 'success' } }));
+      }
+    } catch {
+      /* storage blocked: the default (gateway) applies */
+    }
+  }, provider);
+}
+
+export async function setScenario(page: Page, label: string) {
+  const sim = await openSimulator(page);
+  await sim.getByLabel('What the mock Daraja does next').selectOption({ label });
+  await page.getByRole('button', { name: 'Phone simulator', exact: true }).click(); // close
+}
+
+export async function addMaizeFlourAndOpenCheckout(page: Page, provider: 'simulator' | 'gateway' = 'simulator') {
+  await chooseProvider(page, provider);
   await page.goto('./');
   await page.getByRole('link', { name: 'Maize flour', exact: true }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Maize flour' })).toBeVisible();

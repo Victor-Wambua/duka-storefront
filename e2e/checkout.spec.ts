@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { addMaizeFlourAndOpenCheckout, fillCheckout, openSimulator, readLocal, setOutcome } from './helpers';
 
 test('browse, add, check out, and pay by M-Pesa STK push', async ({ page }) => {
